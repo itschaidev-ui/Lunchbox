@@ -1,0 +1,2 @@
+export const STORAGE_QUOTA_MB = 10;
+export const STORAGE_QUOTA_KB = STORAGE_QUOTA_MB * 1024;
