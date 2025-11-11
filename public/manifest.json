@@ -1,0 +1,47 @@
+{
+  "name": "Lunchbox - AI Task Manager",
+  "short_name": "Lunchbox",
+  "description": "Smart task management with AI assistance",
+  "start_url": "/tasks",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/images/lunchbox-ai-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Add Task",
+      "short_name": "Add",
+      "description": "Quickly add a new task",
+      "url": "/tasks?action=add",
+      "icons": [
+        {
+          "src": "/images/lunchbox-ai-logo.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "AI Assistant",
+      "short_name": "AI",
+      "description": "Open AI assistant",
+      "url": "/tasks?assistant=open",
+      "icons": [
+        {
+          "src": "/images/lunchbox-ai-logo.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
+

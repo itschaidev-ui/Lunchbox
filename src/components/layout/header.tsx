@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { PanelLeft, PanelRight } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { CreditsDisplay } from '@/components/credits/credits-display';
 
 interface HeaderProps {
   leftSheetContent?: ReactNode;
@@ -13,13 +14,13 @@ interface HeaderProps {
 
 export function Header({ leftSheetContent, rightSheetContent }: HeaderProps) {
   return (
-    <header className="h-16 border-b border-border flex items-center px-4 md:px-6 flex-shrink-0 justify-between">
-      <div className="flex items-center gap-2">
+    <header className="h-14 md:h-16 border-b border-border flex items-center px-3 md:px-4 lg:px-6 flex-shrink-0 justify-between">
+      <div className="flex items-center gap-1 md:gap-2">
         {leftSheetContent && (
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon" className="md:hidden">
-                  <PanelLeft className="h-5 w-5" />
+                <Button variant="outline" size="icon" className="h-8 w-8 md:h-10 md:w-10">
+                  <PanelLeft className="h-4 w-4 md:h-5 md:w-5" />
                   <span className="sr-only">Toggle Left Sidebar</span>
                 </Button>
               </SheetTrigger>
@@ -30,12 +31,14 @@ export function Header({ leftSheetContent, rightSheetContent }: HeaderProps) {
         )}
       </div>
 
-      <div className="flex items-center gap-4 ml-auto">
+      <div className="flex items-center gap-2 md:gap-4 ml-auto">
+        <CreditsDisplay />
+        
         {rightSheetContent && (
           <Sheet>
               <SheetTrigger asChild>
-              <Button variant="outline" size="icon" className="md:hidden">
-                  <PanelRight className="h-5 w-5" />
+              <Button variant="outline" size="icon" className="h-8 w-8 md:h-10 md:w-10">
+                  <PanelRight className="h-4 w-4 md:h-5 md:w-5" />
                   <span className="sr-only">Toggle Right Sidebar</span>
               </Button>
               </SheetTrigger>
