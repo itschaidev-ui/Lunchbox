@@ -3,10 +3,33 @@
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { ArrowLeft, Bot, User, Sparkles, Trash2, Download, Save, RotateCcw, MoreVertical, Menu, X, Upload, File, Image, FileText, Copy, Edit, Wand2, Brain, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  Bot, 
+  User, 
+  Sparkles, 
+  Trash2, 
+  Download, 
+  Save, 
+  RotateCcw, 
+  MoreVertical, 
+  Menu, 
+  X, 
+  Upload, 
+  File, 
+  Image as ImageIcon, 
+  FileText, 
+  Copy, 
+  Edit, 
+  Wand2, 
+  Brain, 
+  ChevronDown, 
+  ChevronRight, 
+  MessageSquare,
+  Loader2
+} from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Loader2 } from 'lucide-react';
 import { PromptForm } from '@/components/assistant/prompt-form';
 import { FileUpload } from '@/components/assistant/file-upload';
 import { SkeletonMessage } from '@/components/ui/skeleton';
@@ -40,6 +63,7 @@ export default function AssistantPage() {
   const [uploadedFiles, setUploadedFiles] = useState<TaskFile[]>([]);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedImages, setSelectedImages] = useState<Array<{ id: string; url: string; name: string }>>([]);
   
   // Streaming states
   const [isStreaming, setIsStreaming] = useState(false);
@@ -911,13 +935,171 @@ export default function AssistantPage() {
     }
   };
   
+  const compressImage = (file: File, maxWidth: number = 1920, quality: number = 0.8): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Calculate new dimensions
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Compression failed'));
+                return;
+              }
+              resolve(blob);
+            },
+            file.type,
+            quality
+          );
+        };
+        img.onerror = reject;
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageSelect = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    
+    // Check if adding these files would exceed the limit
+    if (selectedImages.length + fileArray.length > 6) {
+      toast({
+        title: "Too many images",
+        description: `You can only attach up to 6 images. You currently have ${selectedImages.length}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate files
+    const validFiles = fileArray.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: `${file.name} is not an image file.`,
+          variant: "destructive",
+        });
+        return false;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: `${file.name} is larger than 10MB.`,
+          variant: "destructive",
+        });
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
+    // Upload images to Firebase Storage
+    const newImages: Array<{ id: string; url: string; name: string }> = [];
+    
+    try {
+      for (const file of validFiles) {
+        // Compress image before uploading
+        const compressedBlob = await compressImage(file, 1920, 0.8);
+        
+        // Create a unique filename
+        const timestamp = Date.now();
+        const randomId = Math.random().toString(36).substring(7);
+        const fileExtension = file.name.split('.').pop() || 'png';
+        const fileName = `${timestamp}_${randomId}.${fileExtension}`;
+        
+        // Upload to Firebase Storage
+        const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+        const { storage } = await import('@/lib/firebase');
+        
+        const storageRef = ref(
+          storage,
+          `chat-images/${user?.uid || 'anonymous'}/${fileName}`
+        );
+        
+        await uploadBytes(storageRef, compressedBlob, {
+          contentType: file.type,
+        });
+        const downloadURL = await getDownloadURL(storageRef);
+
+        newImages.push({
+          id: randomId,
+          url: downloadURL,
+          name: file.name
+        });
+      }
+
+      setSelectedImages(prev => [...prev, ...newImages]);
+      toast({
+        title: "Images attached",
+        description: `Successfully attached ${newImages.length} image${newImages.length > 1 ? 's' : ''}.`,
+      });
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload images. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleImageRemove = (imageId: string) => {
+    setSelectedImages(prev => prev.filter(img => img.id !== imageId));
+    toast({
+      title: "Image removed",
+      description: "The image has been removed.",
+    });
+  };
+
+  const handleImageReplace = async (imageId: string) => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.multiple = false;
+    fileInput.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        // Remove old image first
+        handleImageRemove(imageId);
+        // Add new image
+        await handleImageSelect([file]);
+      }
+    };
+    fileInput.click();
+  };
+
   const handlePromptSubmit = async (prompt: string) => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() && selectedImages.length === 0) return;
 
     // Create a new chat if we don't have one
     if (!currentChat) {
       try {
-        const chatTitle = prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt;
+        const chatTitle = prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt || (selectedImages.length > 0 ? 'Image conversation' : 'New chat');
         const chatId = await createNewChat(chatTitle);
         console.log('Created new chat:', chatId);
         
@@ -937,10 +1119,25 @@ export default function AssistantPage() {
       }
     }
 
+    // Build message content with text and images
+    // Use URLs instead of base64 to avoid body size limit
+    const messageContent: any[] = [{ text: prompt || (selectedImages.length > 0 ? '(Images only)' : '') }];
+    
+    // Add all selected images (using Firebase Storage URLs)
+    selectedImages.forEach(img => {
+      messageContent.push({
+        image: img.url, // Firebase Storage URL, not base64
+        fileName: img.name
+      });
+    });
+
     const userMessage: Message = {
       role: 'user',
-      content: [{ text: prompt }]
+      content: messageContent
     };
+
+    // Clear selected images after sending
+    setSelectedImages([]);
 
     const updatedMessages = await addMessage(userMessage);
     setIsLoading(true);
@@ -1518,6 +1715,55 @@ export default function AssistantPage() {
                   {Array.isArray(message.content) 
                     ? message.content.map((content: any, contentIndex: number) => {
                         const messageIndex = messages.findIndex(m => m === message);
+                        
+                        // Handle image content
+                        if (content.image) {
+                          return (
+                            <motion.div
+                              key={contentIndex}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ duration: 0.3 }}
+                              className="my-2"
+                            >
+                              <div className="relative group">
+                                <motion.img
+                                  src={content.image}
+                                  alt={content.fileName || 'Uploaded image'}
+                                  className="rounded-lg max-w-full h-auto cursor-pointer border border-gray-700 hover:border-blue-500/50 transition-all"
+                                  style={{ maxHeight: '400px' }}
+                                  whileHover={{ scale: 1.02 }}
+                                  transition={{ duration: 0.2 }}
+                                  onClick={() => {
+                                    // Open image in full size
+                                    const newWindow = window.open();
+                                    if (newWindow) {
+                                      newWindow.document.write(`
+                                        <html>
+                                          <head><title>${content.fileName || 'Image'}</title></head>
+                                          <body style="margin:0;padding:20px;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;">
+                                            <img src="${content.image}" style="max-width:100%;max-height:100vh;object-fit:contain;" />
+                                          </body>
+                                        </html>
+                                      `);
+                                    }
+                                  }}
+                                />
+                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="bg-black/70 backdrop-blur-sm rounded px-2 py-1 text-xs text-white">
+                                    Click to expand
+                                  </div>
+                                </div>
+                                {content.fileName && (
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    {content.fileName}
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          );
+                        }
+                        
                         // Check for saved code content with markers
                         if (content.text?.startsWith('[CODE_START]') || content.text?.startsWith('[CSS_START]')) {
                           console.log('🔍 Found code markers in content:', content.text.substring(0, 200) + '...');
@@ -1906,6 +2152,10 @@ export default function AssistantPage() {
             advancedAI={advancedAI}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
+            onImageSelect={handleImageSelect}
+            onImageRemove={handleImageRemove}
+            onImageReplace={handleImageReplace}
+            selectedImages={selectedImages}
             showExamples={false}
             lastTokenUsage={messages.filter(m => m.role === 'assistant').slice(-1)[0] ? (messages.filter(m => m.role === 'assistant').slice(-1)[0] as any).tokenUsage : undefined}
           />
@@ -1951,6 +2201,10 @@ export default function AssistantPage() {
               activeTab={activeTab}
               onTabChange={setActiveTab}
               onFileUpload={() => setShowFileUpload(!showFileUpload)}
+              onImageSelect={handleImageSelect}
+              onImageRemove={handleImageRemove}
+              onImageReplace={handleImageReplace}
+              selectedImages={selectedImages}
               showExamples={messages.length === 0}
               lastTokenUsage={messages.filter(m => m.role === 'assistant').slice(-1)[0] ? (messages.filter(m => m.role === 'assistant').slice(-1)[0] as any).tokenUsage : undefined}
             />

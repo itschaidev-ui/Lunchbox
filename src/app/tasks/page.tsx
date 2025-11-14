@@ -8,7 +8,7 @@ import { TaskForm } from '@/components/task-form';
 import { TaskItem } from '@/components/task-item';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, List, Search, ArrowLeft, Kanban, CheckSquare, Trash2, X, Tag as TagIcon, Filter } from 'lucide-react';
+import { Calendar, List, Search, ArrowLeft, Kanban, CheckSquare, Trash2, X, Tag as TagIcon, Filter, SlidersHorizontal } from 'lucide-react';
 import { useTasks } from '@/context/task-context';
 import { useAuth } from '@/context/auth-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,6 +17,8 @@ import { TaskCalendar } from '@/components/calendar/task-calendar';
 import { TaskKanban } from '@/components/kanban/task-kanban';
 import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import Link from 'next/link';
 import { AssistantSidebar } from '@/components/assistant/assistant-sidebar';
 import { FeedbackPopup } from '@/components/feedback/feedback-popup';
@@ -43,6 +45,7 @@ function TasksPageContent() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showCreditsDialog, setShowCreditsDialog] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   
   // Get search params - must be called unconditionally (hooks rule)
   const searchParams = useSearchParams();
@@ -346,6 +349,7 @@ function TasksPageContent() {
       <>
         <div className="mt-2 md:mt-4">
             <div className="flex flex-col gap-2 mb-4 md:mb-6 shrink-0">
+                {/* Search Bar */}
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                     <Input 
@@ -355,70 +359,221 @@ function TasksPageContent() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
-                <div className="flex gap-2">
-                 <Select value={filter} onValueChange={setFilter}>
-                    <SelectTrigger className="flex-1 text-xs sm:text-sm h-10 bg-gray-900/50 border-gray-800">
-                      <SelectValue placeholder="Filter" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-900 border-gray-800">
-                      <SelectItem value="all" className="text-xs sm:text-sm">All Tasks</SelectItem>
-                      <SelectItem value="active" className="text-xs sm:text-sm">Active</SelectItem>
-                      <SelectItem value="completed" className="text-xs sm:text-sm">Completed</SelectItem>
-                      <SelectItem value="overdue" className="text-xs sm:text-sm">Overdue</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={sort} onValueChange={setSort}>
-                    <SelectTrigger className="flex-1 text-xs sm:text-sm h-10 bg-gray-900/50 border-gray-800">
-                      <SelectValue placeholder="Sort" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-900 border-gray-800">
-                      <SelectItem value="recent" className="text-xs sm:text-sm">Recent</SelectItem>
-                      <SelectItem value="oldest" className="text-xs sm:text-sm">Oldest</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {/* Tag Filter */}
-                {allTags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <div className="flex items-center gap-1 text-xs text-gray-400">
-                      <Filter className="h-3 w-3" />
-                      <span>Tags:</span>
-                    </div>
-                    {allTags.map(tag => (
-                      <Button
-                        key={tag}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedTags(prev => 
-                            prev.includes(tag) 
-                              ? prev.filter(t => t !== tag)
-                              : [...prev, tag]
-                          );
-                        }}
-                        className={`h-7 px-2 text-xs transition-all ${
-                          selectedTags.includes(tag)
-                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30'
-                            : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'
-                        }`}
-                      >
-                        <TagIcon className="h-3 w-3 mr-1" />
-                        {tag}
-                      </Button>
-                    ))}
-                    {selectedTags.length > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedTags([])}
-                        className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      >
-                        <X className="h-3 w-3 mr-1" />
-                        Clear
-                      </Button>
-                    )}
+                
+                {/* Desktop Filters - Hidden on mobile */}
+                <div className="hidden md:flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Select value={filter} onValueChange={setFilter}>
+                      <SelectTrigger className="flex-1 text-xs sm:text-sm h-10 bg-gray-900/50 border-gray-800">
+                        <SelectValue placeholder="Filter" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-900 border-gray-800">
+                        <SelectItem value="all" className="text-xs sm:text-sm">All Tasks</SelectItem>
+                        <SelectItem value="active" className="text-xs sm:text-sm">Active</SelectItem>
+                        <SelectItem value="completed" className="text-xs sm:text-sm">Completed</SelectItem>
+                        <SelectItem value="overdue" className="text-xs sm:text-sm">Overdue</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={sort} onValueChange={setSort}>
+                      <SelectTrigger className="flex-1 text-xs sm:text-sm h-10 bg-gray-900/50 border-gray-800">
+                        <SelectValue placeholder="Sort" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-900 border-gray-800">
+                        <SelectItem value="recent" className="text-xs sm:text-sm">Recent</SelectItem>
+                        <SelectItem value="oldest" className="text-xs sm:text-sm">Oldest</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                )}
+                  {/* Desktop Tag Filter */}
+                  {allTags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <div className="flex items-center gap-1 text-xs text-gray-400">
+                        <Filter className="h-3 w-3" />
+                        <span>Tags:</span>
+                      </div>
+                      {allTags.map(tag => (
+                        <Button
+                          key={tag}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedTags(prev => 
+                              prev.includes(tag) 
+                                ? prev.filter(t => t !== tag)
+                                : [...prev, tag]
+                            );
+                          }}
+                          className={`h-7 px-2 text-xs transition-all ${
+                            selectedTags.includes(tag)
+                              ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30'
+                              : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'
+                          }`}
+                        >
+                          <TagIcon className="h-3 w-3 mr-1" />
+                          {tag}
+                        </Button>
+                      ))}
+                      {selectedTags.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedTags([])}
+                          className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Mobile Filter Button - Show on mobile only */}
+                <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
+                  <SheetTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      className="md:hidden w-full h-10 bg-gray-900/50 border-gray-800 justify-between"
+                    >
+                      <div className="flex items-center gap-2">
+                        <SlidersHorizontal className="h-4 w-4" />
+                        <span className="text-sm">Filters</span>
+                        {(filter !== 'all' || sort !== 'recent' || selectedTags.length > 0) && (
+                          <span className="ml-2 px-2 py-0.5 text-xs bg-blue-500/20 text-blue-300 rounded-full">
+                            {[
+                              filter !== 'all' ? 1 : 0,
+                              sort !== 'recent' ? 1 : 0,
+                              selectedTags.length
+                            ].reduce((a, b) => a + b, 0)}
+                          </span>
+                        )}
+                      </div>
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="bottom" className="h-[85vh] overflow-y-auto">
+                    <SheetHeader>
+                      <SheetTitle>Filters</SheetTitle>
+                    </SheetHeader>
+                    <div className="mt-6 space-y-6">
+                      {/* Filter Type */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">Filter</label>
+                        <Select value={filter} onValueChange={setFilter}>
+                          <SelectTrigger className="w-full h-10 bg-gray-900/50 border-gray-800">
+                            <SelectValue placeholder="Filter" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-gray-900 border-gray-800">
+                            <SelectItem value="all">All Tasks</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="overdue">Overdue</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Sort */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">Sort</label>
+                        <Select value={sort} onValueChange={setSort}>
+                          <SelectTrigger className="w-full h-10 bg-gray-900/50 border-gray-800">
+                            <SelectValue placeholder="Sort" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-gray-900 border-gray-800">
+                            <SelectItem value="recent">Recent</SelectItem>
+                            <SelectItem value="oldest">Oldest</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Tags */}
+                      {allTags.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                              <Filter className="h-4 w-4" />
+                              Tags
+                            </label>
+                            {selectedTags.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedTags([])}
+                                className="h-7 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                              >
+                                <X className="h-3 w-3 mr-1" />
+                                Clear All
+                              </Button>
+                            )}
+                          </div>
+                          <ScrollArea className="h-[200px] pr-4">
+                            <div className="flex flex-wrap gap-2">
+                              {allTags.map(tag => (
+                                <Button
+                                  key={tag}
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedTags(prev => 
+                                      prev.includes(tag) 
+                                        ? prev.filter(t => t !== tag)
+                                        : [...prev, tag]
+                                    );
+                                  }}
+                                  className={`h-8 px-3 text-xs transition-all ${
+                                    selectedTags.includes(tag)
+                                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30'
+                                      : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'
+                                  }`}
+                                >
+                                  <TagIcon className="h-3 w-3 mr-1.5" />
+                                  {tag}
+                                </Button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      )}
+
+                      {/* Active Filters Summary */}
+                      {(filter !== 'all' || sort !== 'recent' || selectedTags.length > 0) && (
+                        <div className="pt-4 border-t border-gray-700">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Active Filters:</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setFilter('all');
+                                setSort('recent');
+                                setSelectedTags([]);
+                              }}
+                              className="text-xs text-red-400 hover:text-red-300"
+                            >
+                              Reset All
+                            </Button>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {filter !== 'all' && (
+                              <Badge variant="secondary" className="text-xs">
+                                {filter === 'active' ? 'Active' : filter === 'completed' ? 'Completed' : 'Overdue'}
+                              </Badge>
+                            )}
+                            {sort !== 'recent' && (
+                              <Badge variant="secondary" className="text-xs">
+                                {sort === 'oldest' ? 'Oldest' : 'Recent'}
+                              </Badge>
+                            )}
+                            {selectedTags.map(tag => (
+                              <Badge key={tag} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </SheetContent>
+                </Sheet>
             </div>
             {loading ? (
                 <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-6 sm:p-8">

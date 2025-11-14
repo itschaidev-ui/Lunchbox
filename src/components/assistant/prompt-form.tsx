@@ -1,7 +1,7 @@
 
 'use client';
 
-import { Loader2, ArrowUp, User, Mail, MessageSquare, Code, Calendar, Target, Lightbulb, Zap, Paperclip, Mic, ChevronDown, Sparkles, Lock, Image as ImageIcon, BarChart3 } from 'lucide-react';
+import { Loader2, ArrowUp, User, Mail, MessageSquare, Code, Calendar, Target, Lightbulb, Zap, Paperclip, Mic, ChevronDown, Sparkles, Lock, Image as ImageIcon, BarChart3, X, Pencil } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { useState, useEffect, useRef } from 'react';
@@ -35,7 +35,7 @@ const examplePrompts = [
 ];
 
 
-export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab = 'message', onTabChange, onFileUpload, advancedAI, selectedModel, onModelChange, onImageSelect, lastTokenUsage }: { 
+export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab = 'message', onTabChange, onFileUpload, advancedAI, selectedModel, onModelChange, onImageSelect, onImageRemove, onImageReplace, selectedImages = [], lastTokenUsage }: { 
   onSubmit: (prompt: string) => void, 
   isLoading: boolean, 
   showExamples?: boolean,
@@ -45,7 +45,10 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
   advancedAI?: boolean,
   selectedModel?: string,
   onModelChange?: (modelId: string) => void,
-  onImageSelect?: (file: File) => void,
+  onImageSelect?: (files: FileList | File[]) => void,
+  onImageRemove?: (imageId: string) => void,
+  onImageReplace?: (imageId: string) => void,
+  selectedImages?: Array<{ id: string; url: string; name: string }>,
   lastTokenUsage?: any
 }) {
   const [prompt, setPrompt] = useState('');
@@ -138,10 +141,10 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
+    const files = e.target.files;
+    if (files && files.length > 0) {
       if (onImageSelect) {
-        onImageSelect(file);
+        onImageSelect(files);
       }
     }
     // Reset input so same file can be selected again
@@ -215,10 +218,114 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileChange}
         className="hidden"
       />
       <form onSubmit={handleSubmit}>
+        {/* Attached Images - On top of text field (ChatGPT style) */}
+        {selectedImages.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {selectedImages.map((img) => (
+              <div key={img.id} className="relative group">
+                <img 
+                  src={img.url} 
+                  alt={img.name}
+                  className="w-14 h-14 rounded-lg object-cover border border-gray-600 cursor-pointer transition-transform duration-200 hover:scale-110"
+                  onClick={(e) => {
+                    // Create modal overlay for full-size view
+                    const modal = document.createElement('div');
+                    modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4';
+                    modal.style.animation = 'fadeIn 0.2s ease-out';
+                    
+                    const fullImg = document.createElement('img');
+                    fullImg.src = img.url;
+                    fullImg.className = 'max-w-full max-h-full rounded-lg shadow-2xl object-contain';
+                    fullImg.style.animation = 'scaleIn 0.3s ease-out';
+                    
+                    const closeBtn = document.createElement('button');
+                    closeBtn.className = 'absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center transition-colors';
+                    closeBtn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+                    closeBtn.onclick = () => {
+                      modal.style.animation = 'fadeOut 0.2s ease-out';
+                      setTimeout(() => modal.remove(), 200);
+                    };
+                    
+                    modal.appendChild(fullImg);
+                    modal.appendChild(closeBtn);
+                    modal.onclick = (e) => {
+                      if (e.target === modal) {
+                        modal.style.animation = 'fadeOut 0.2s ease-out';
+                        setTimeout(() => modal.remove(), 200);
+                      }
+                    };
+                    
+                    document.body.appendChild(modal);
+                    
+                    // Add CSS animations if not already added
+                    if (!document.getElementById('image-modal-styles')) {
+                      const style = document.createElement('style');
+                      style.id = 'image-modal-styles';
+                      style.textContent = `
+                        @keyframes fadeIn {
+                          from { opacity: 0; }
+                          to { opacity: 1; }
+                        }
+                        @keyframes fadeOut {
+                          from { opacity: 1; }
+                          to { opacity: 0; }
+                        }
+                        @keyframes scaleIn {
+                          from { transform: scale(0.8); opacity: 0; }
+                          to { transform: scale(1); opacity: 1; }
+                        }
+                      `;
+                      document.head.appendChild(style);
+                    }
+                    
+                    e.stopPropagation();
+                  }}
+                />
+                {/* Edit and Remove buttons */}
+                <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onImageReplace?.(img.id);
+                    }}
+                    className="w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center border border-gray-600 transition-colors"
+                    title="Replace image"
+                  >
+                    <Pencil className="h-2.5 w-2.5 text-white" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onImageRemove?.(img.id);
+                    }}
+                    className="w-5 h-5 rounded-full bg-gray-700 hover:bg-red-600 flex items-center justify-center border border-gray-600 transition-colors"
+                    title="Remove image"
+                  >
+                    <X className="h-2.5 w-2.5 text-white" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {selectedImages.length < 6 && (
+              <button
+                type="button"
+                onClick={handleImageSelect}
+                className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-600 hover:border-gray-500 flex items-center justify-center text-gray-400 hover:text-gray-300 transition-colors"
+                title="Add more images"
+              >
+                <ImageIcon className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* ChatGPT-style input container */}
         <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 shadow-lg transition-all duration-200 hover:border-gray-600 focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-blue-500/20">
           {/* Tab switcher */}
@@ -327,7 +434,7 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
 
             {/* Text input */}
             <Textarea
-              placeholder={`Ask AI a question or make a request...`}
+              placeholder={selectedImages.length > 0 ? "Ask anything" : "Ask AI a question or make a request..."}
               className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none resize-none min-h-[60px] text-white placeholder:text-gray-400 text-base"
               value={prompt}
               onChange={handlePromptChange}
@@ -361,7 +468,7 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
               type="submit"
               size="sm"
               className="rounded-full bg-white text-gray-800 hover:bg-gray-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed p-2"
-              disabled={isLoading || !prompt.trim()}
+              disabled={isLoading || (!prompt.trim() && selectedImages.length === 0)}
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

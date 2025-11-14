@@ -101,6 +101,13 @@ export async function continueConversation(
 
     const prompt = `You are a helpful AI assistant for Lunchbox, a task management platform. Be witty, charming, and proactive.${fileContextString}${taskContextString}${activeTabContext}${advancedAIRestrictions}
 
+IMAGE ANALYSIS:
+- When users attach images, you will receive detailed analysis of the images in the message content
+- Use the provided image analysis (summary, extracted text, tags) to answer questions about the images
+- Be specific about details, colors, objects, text, and context from the analysis
+- If image analysis is not available, politely ask the user to describe what they see
+- NEVER say "I couldn't load the image" - always be helpful and ask for a description if needed
+
 TASK ACTIONS - JSON only:
 - Triggers: "create/add/make task", "remind me to", or action with time/date
 - Time-sensitive (appointments/calls/events): Ask for date/time if missing (plain text)
@@ -130,10 +137,200 @@ CODE/PLANS/STORIES:
 - Generate working examples, be proactive` : ''}`;
 
     // Convert history to the format expected by multi-provider
-    const messages = history.map(msg => ({
-      role: msg.role as 'user' | 'assistant' | 'system',
-      content: typeof msg.content === 'string' ? msg.content : 
-        (Array.isArray(msg.content) ? msg.content.map(c => c.text).join(' ') : JSON.stringify(msg.content))
+    const messages = await Promise.all(history.map(async (msg) => {
+      if (typeof msg.content === 'string') {
+        return {
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content
+        };
+      }
+      
+      // Handle array content (can include text and images)
+      if (Array.isArray(msg.content)) {
+        // Extract text parts
+        const textParts = msg.content
+          .filter(c => c.text)
+          .map(c => c.text);
+        
+        // Extract image parts
+        const imageParts = msg.content
+          .filter(c => (c as any).image)
+          .map(c => (c as any).image);
+        
+        // If there are images, analyze them and include the analysis
+        // NOTE: Image analysis works regardless of advancedAI setting
+        if (imageParts.length > 0) {
+          console.log(`🖼️ Processing ${imageParts.length} image(s) for message (advancedAI: ${advancedAI})`);
+          
+          // Analyze images using Gemini Vision API
+          const { analyzeUploadedFile } = await import('@/lib/ai/document-analyzer');
+          
+          console.log(`📡 Starting image analysis (this works even if advancedAI is disabled)...`);
+          const imageAnalyses = await Promise.all(
+            imageParts.map(async (imageUrl: string, idx: number) => {
+              try {
+                // Get file name from URL or use default
+                const fileName = imageUrl.split('/').pop() || `image-${idx + 1}.png`;
+                
+                // Detect image type from URL or fetch headers
+                let imageType = 'image/png'; // default
+                try {
+                  // Try HEAD request first (faster)
+                  const headResponse = await fetch(imageUrl, { 
+                    method: 'HEAD',
+                    headers: {
+                      'Accept': 'image/*',
+                    }
+                  });
+                  
+                  if (headResponse.ok) {
+                    const contentType = headResponse.headers.get('content-type');
+                    if (contentType && contentType.startsWith('image/')) {
+                      imageType = contentType;
+                      console.log(`Detected image type from headers: ${imageType}`);
+                    }
+                  }
+                  
+                  // Fallback to file extension if HEAD fails
+                  if (imageType === 'image/png') {
+                    const ext = fileName.split('.').pop()?.toLowerCase();
+                    if (ext === 'jpg' || ext === 'jpeg') imageType = 'image/jpeg';
+                    else if (ext === 'png') imageType = 'image/png';
+                    else if (ext === 'gif') imageType = 'image/gif';
+                    else if (ext === 'webp') imageType = 'image/webp';
+                    console.log(`Detected image type from extension: ${imageType}`);
+                  }
+                } catch (e: any) {
+                  // Use default if detection fails
+                  console.warn(`Could not detect image type: ${e?.message || e}, using default ${imageType}`);
+                }
+                
+                console.log(`🔍 Analyzing image ${idx + 1}/${imageParts.length}: ${fileName}`);
+                const analysis = await analyzeUploadedFile(imageUrl, imageType, fileName);
+                console.log(`✅ Image ${idx + 1} analysis complete:`, {
+                  hasSummary: !!analysis.summary,
+                  hasText: !!analysis.extractedText,
+                  confidence: analysis.confidence
+                });
+                return {
+                  url: imageUrl,
+                  fileName,
+                  analysis
+                };
+              } catch (error: any) {
+                console.error(`❌ Error analyzing image ${idx + 1}:`, error?.message || error);
+                return {
+                  url: imageUrl,
+                  fileName: `image-${idx + 1}.png`,
+                  analysis: {
+                    extractedText: '',
+                    summary: `Image ${idx + 1} attached but analysis unavailable. Please describe what you see in the image.`,
+                    suggestedTags: [],
+                    detectedTaskItems: [],
+                    confidence: 0,
+                    documentType: 'image'
+                  }
+                };
+              }
+            })
+          );
+          
+          console.log(`📊 Image analysis complete. Results:`, imageAnalyses.map((img, i) => ({
+            image: i + 1,
+            fileName: img.fileName,
+            hasAnalysis: !!img.analysis.summary,
+            summaryPreview: img.analysis.summary?.substring(0, 100)
+          })));
+          
+          // Build content with image analysis
+          const textContent = textParts.join(' ') || '';
+          
+          let content = textContent;
+          if (textContent) {
+            content += '\n\n';
+          }
+          
+          content += `📷 USER ATTACHED ${imageParts.length} IMAGE${imageParts.length > 1 ? 'S' : ''} 📷\n\n`;
+          
+          imageAnalyses.forEach((img, idx) => {
+            content += `━━━ IMAGE ${idx + 1}: ${img.fileName} ━━━\n`;
+            
+            // Check if we have successful analysis
+            const hasGoodAnalysis = img.analysis.summary && 
+                                   !img.analysis.summary.includes('couldn\'t analyze') &&
+                                   !img.analysis.summary.includes('analysis unavailable') &&
+                                   !img.analysis.summary.includes('Error analyzing');
+            
+            if (hasGoodAnalysis) {
+              content += `✅ IMAGE SUCCESSFULLY ANALYZED\n\n`;
+              content += `📝 DETAILED DESCRIPTION:\n${img.analysis.summary}\n\n`;
+              
+              if (img.analysis.extractedText && img.analysis.extractedText.trim()) {
+                content += `📄 TEXT FOUND IN IMAGE:\n${img.analysis.extractedText}\n\n`;
+              }
+              
+              if (img.analysis.suggestedTags && img.analysis.suggestedTags.length > 0) {
+                content += `🏷️ Tags: ${img.analysis.suggestedTags.join(', ')}\n`;
+              }
+              
+              if (img.analysis.detectedTaskItems && img.analysis.detectedTaskItems.length > 0) {
+                content += `✓ Tasks detected: ${img.analysis.detectedTaskItems.join(', ')}\n`;
+              }
+            } else {
+              // Analysis failed - provide helpful fallback
+              content += `⚠️ Automatic analysis not available for this image.\n`;
+              content += `Image URL: ${img.url}\n\n`;
+              content += `Please ask the user to describe what they see in this image so you can help them.\n`;
+            }
+            content += `\n`;
+          });
+          
+          content += `\n━━━ YOUR RESPONSE INSTRUCTIONS ━━━\n`;
+          content += `The user has attached ${imageParts.length} image${imageParts.length > 1 ? 's' : ''} with their message "${textContent || '(no text provided)'}".\n\n`;
+          
+          const successfulAnalyses = imageAnalyses.filter(img => 
+            img.analysis.summary && 
+            !img.analysis.summary.includes('couldn\'t analyze') &&
+            !img.analysis.summary.includes('analysis unavailable') &&
+            !img.analysis.summary.includes('not configured')
+          );
+          
+          if (successfulAnalyses.length > 0) {
+            content += `✅ You have detailed analysis for ${successfulAnalyses.length} of ${imageParts.length} image(s). `;
+            content += `Use the analysis provided above to answer the user's question about the image(s). `;
+            content += `Be specific and reference details from the analysis.\n\n`;
+          } else {
+            content += `⚠️ Automatic image analysis was not available for these images. `;
+            content += `However, the user has clearly attached image(s) and asked a question. `;
+            content += `You should:\n`;
+            content += `1. Acknowledge that you received their image(s) and question\n`;
+            content += `2. Politely ask them to describe what they see in the image(s)\n`;
+            content += `3. Offer to help once they provide a description\n`;
+            content += `4. Be friendly and helpful - NEVER say "I couldn't load" or "I can't see the image" - `;
+            content += `instead say something like: "I'd love to help! Could you describe what you see in the image?"\n\n`;
+          }
+          
+          content += `Remember: The user has attached image(s) and asked "${textContent || 'about the image(s)'}". `;
+          content += `Always be helpful and never say you can't access or load images.`;
+          
+          return {
+            role: msg.role as 'user' | 'assistant' | 'system',
+            content: content
+          };
+        }
+        
+        // No images, just text
+        return {
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: textParts.join(' ')
+        };
+      }
+      
+      // Fallback for other content types
+      return {
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: JSON.stringify(msg.content)
+      };
     }));
 
     // Add the prompt as a system message

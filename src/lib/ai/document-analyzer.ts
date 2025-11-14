@@ -23,9 +23,23 @@ export async function analyzeUploadedFile(
   try {
     console.log(`Analyzing file: ${fileName} (${fileType})`);
     
+    // Check if Gemini API key is available
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
+      console.warn('⚠️ GEMINI_API_KEY not set in environment variables. Image analysis will be limited.');
+      console.warn('💡 To enable full image analysis, set GEMINI_API_KEY in your .env file or environment variables.');
+      return {
+        extractedText: '',
+        summary: `The user has attached an image file: "${fileName}". The image is available but automatic analysis is not configured. Please ask the user to describe what they see in the image so you can help them.`,
+        suggestedTags: ['image'],
+        detectedTaskItems: [],
+        confidence: 0,
+        documentType: 'image'
+      };
+    }
+    
     // For images, use Gemini Vision
     if (fileType.startsWith('image/')) {
-      return await analyzeImage(fileUrl, fileName);
+      return await analyzeImage(fileUrl, fileName, fileType);
     }
     
     // For PDFs, we'll need to extract text first (this would require a PDF parsing library)
@@ -62,40 +76,87 @@ export async function analyzeUploadedFile(
 /**
  * Analyze an image using Gemini Vision
  */
-async function analyzeImage(fileUrl: string, fileName: string): Promise<DocumentAnalysisResult> {
+async function analyzeImage(fileUrl: string, fileName: string, mimeType: string = 'image/png'): Promise<DocumentAnalysisResult> {
   try {
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === '') {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+    
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     // Fetch the image
-    const response = await fetch(fileUrl);
+    console.log(`Fetching image from: ${fileUrl}`);
+    let response: Response;
+    try {
+      response = await fetch(fileUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'image/*',
+        },
+      });
+    } catch (fetchError: any) {
+      console.error('Network error fetching image:', fetchError);
+      throw new Error(`Network error: ${fetchError?.message || 'Could not fetch image'}`);
+    }
+    
+    if (!response.ok) {
+      console.error(`Image fetch failed: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}. Image URL may be invalid or inaccessible.`);
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.startsWith('image/')) {
+      console.warn(`Warning: Content-Type is ${contentType}, expected image/*`);
+    }
+    
     const imageBuffer = await response.arrayBuffer();
+    if (imageBuffer.byteLength === 0) {
+      throw new Error('Image file is empty');
+    }
+    
+    console.log(`Image fetched successfully: ${(imageBuffer.byteLength / 1024).toFixed(2)} KB`);
+    const base64Image = Buffer.from(imageBuffer).toString('base64');
+    
     const imageData = {
       inlineData: {
-        data: Buffer.from(imageBuffer).toString('base64'),
-        mimeType: 'image/jpeg' // Assume JPEG for now
+        data: base64Image,
+        mimeType: mimeType || 'image/png'
       }
     };
 
     const prompt = `
-    Analyze this image and provide:
-    1. Extract all visible text (OCR)
-    2. Summarize the content
-    3. Suggest relevant tags
-    4. Identify any tasks, deadlines, or action items
-    5. Determine document type (receipt, homework, note, etc.)
+    Analyze this image in detail and provide a comprehensive description. Be specific about:
+    1. All visible text (OCR) - transcribe everything you can read
+    2. Objects, items, and elements visible in the image
+    3. Colors, patterns, and visual details
+    4. Context and setting (indoor/outdoor, location clues, etc.)
+    5. Any tasks, deadlines, or action items if applicable
+    6. Document type if it's a document (receipt, homework, note, screenshot, etc.)
+    
+    Provide a detailed summary that would help someone understand what's in the image without seeing it.
     
     Respond in JSON format:
     {
-      "extractedText": "all visible text",
-      "summary": "brief summary of content",
+      "extractedText": "all visible text from the image",
+      "summary": "detailed description of what you see in the image",
       "suggestedTags": ["tag1", "tag2"],
       "detectedTaskItems": ["task1", "task2"],
-      "documentType": "type of document"
+      "documentType": "type of document or image"
     }
     `;
 
-    const result = await model.generateContent([prompt, imageData]);
+    console.log(`Calling Gemini Vision API for image: ${fileName} (${(base64Image.length / 1024).toFixed(2)} KB base64)`);
+    
+    let result;
+    try {
+      result = await model.generateContent([prompt, imageData]);
+    } catch (apiError: any) {
+      console.error('Gemini API error:', apiError);
+      throw new Error(`Gemini Vision API error: ${apiError?.message || 'Unknown error'}`);
+    }
+    
     const responseText = result.response.text();
+    console.log(`Gemini Vision response received for ${fileName} (${responseText.length} chars)`);
     
     try {
       const analysis = JSON.parse(responseText);
@@ -118,12 +179,21 @@ async function analyzeImage(fileUrl: string, fileName: string): Promise<Document
         documentType: 'image'
       };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error analyzing image:', error);
+    console.error('Error details:', {
+      message: error?.message,
+      stack: error?.stack,
+      fileName,
+      fileUrl
+    });
+    
+    // Return a helpful fallback that tells the AI to ask the user
     return {
       extractedText: '',
-      summary: `Error analyzing image: ${fileName}`,
-      suggestedTags: ['error'],
+      summary: `An image was attached (${fileName}), but I couldn't analyze it automatically. The image is available at: ${fileUrl}. Please describe what you see in the image or ask questions about it.`,
+      suggestedTags: ['image', 'needs-description'],
+      detectedTaskItems: [],
       confidence: 0,
       documentType: 'image'
     };
