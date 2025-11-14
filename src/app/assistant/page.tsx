@@ -1735,17 +1735,37 @@ export default function AssistantPage() {
                                   whileHover={{ scale: 1.02 }}
                                   transition={{ duration: 0.2 }}
                                   onClick={() => {
-                                    // Open image in full size
-                                    const newWindow = window.open();
-                                    if (newWindow) {
-                                      newWindow.document.write(`
-                                        <html>
-                                          <head><title>${content.fileName || 'Image'}</title></head>
-                                          <body style="margin:0;padding:20px;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;">
-                                            <img src="${content.image}" style="max-width:100%;max-height:100vh;object-fit:contain;" />
-                                          </body>
-                                        </html>
-                                      `);
+                                    // Open image in full size - use safer method for mobile PWA
+                                    try {
+                                      // Try opening in new tab first (works better on mobile)
+                                      const link = document.createElement('a');
+                                      link.href = content.image;
+                                      link.target = '_blank';
+                                      link.rel = 'noopener noreferrer';
+                                      
+                                      // For mobile PWA, use a modal instead of window.open
+                                      if (window.matchMedia('(display-mode: standalone)').matches || 
+                                          (window.navigator as any).standalone) {
+                                        // PWA mode - use modal/image viewer
+                                        const modal = document.createElement('div');
+                                        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                                        modal.onclick = () => modal.remove();
+                                        
+                                        const img = document.createElement('img');
+                                        img.src = content.image;
+                                        img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+                                        img.onclick = (e) => e.stopPropagation();
+                                        
+                                        modal.appendChild(img);
+                                        document.body.appendChild(modal);
+                                      } else {
+                                        // Regular browser - use link
+                                        link.click();
+                                      }
+                                    } catch (error) {
+                                      console.error('Error opening image:', error);
+                                      // Fallback: just open the URL
+                                      window.open(content.image, '_blank', 'noopener,noreferrer');
                                     }
                                   }}
                                 />

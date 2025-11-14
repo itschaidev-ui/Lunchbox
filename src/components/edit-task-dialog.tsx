@@ -19,7 +19,9 @@ import { Textarea } from './ui/textarea';
 import { useTasks } from '@/context/task-context';
 import type { Task } from '@/lib/types';
 import { useEffect, useRef } from 'react';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Star, Tag as TagIcon, X } from 'lucide-react';
+import { Badge } from './ui/badge';
+import { Checkbox } from './ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -30,6 +32,8 @@ const formSchema = z.object({
   description: z.string().optional(),
   dueDate: z.date().optional(),
   dueTime: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  starred: z.boolean().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -51,6 +55,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
       description: '',
       dueDate: undefined,
       dueTime: '',
+      tags: [],
+      starred: false,
     },
   });
   
@@ -62,6 +68,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
             description: task.description || '',
             dueDate: dueDate,
             dueTime: dueDate ? format(dueDate, 'HH:mm') : '',
+            tags: task.tags || [],
+            starred: task.starred || false,
         })
     }
   }, [task, form, isOpen]);
@@ -87,6 +95,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
         text: values.text,
         description: values.description,
         dueDate: finalDueDate?.toISOString(),
+        tags: values.tags,
+        starred: values.starred,
     });
     onOpenChange(false);
   };
@@ -187,6 +197,83 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
                   )}
                 />
               </div>
+
+            {/* Tags Field */}
+            <FormField
+              control={form.control}
+              name="tags"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <TagIcon className="h-4 w-4" />
+                    Tags
+                  </FormLabel>
+                  <FormControl>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Add a tag and press Enter"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const value = e.currentTarget.value.trim();
+                            if (value && !field.value?.includes(value)) {
+                              field.onChange([...(field.value || []), value]);
+                              e.currentTarget.value = '';
+                            }
+                          }
+                        }}
+                        className="bg-gray-800 border-gray-700"
+                      />
+                      {field.value && field.value.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {field.value.map((tag, idx) => (
+                            <Badge
+                              key={idx}
+                              variant="secondary"
+                              className="flex items-center gap-1 bg-blue-500/20 text-blue-300 border-blue-500/30"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  field.onChange(field.value?.filter((_, i) => i !== idx));
+                                }}
+                                className="ml-1 hover:opacity-70"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Starred Field */}
+            <FormField
+              control={form.control}
+              name="starred"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="flex items-center gap-2 cursor-pointer">
+                      <Star className={cn("h-4 w-4", field.value && "fill-yellow-400 text-yellow-400")} />
+                      Mark as Important (Starred)
+                    </FormLabel>
+                  </div>
+                </FormItem>
+              )}
+            />
 
             <DialogFooter className="pt-4">
                 <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>

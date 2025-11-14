@@ -81,8 +81,10 @@ export function RoutineFormDialog({
       }
 
       onSuccess();
+      onClose(); // Ensure dialog closes after success
     } catch (error) {
       console.error('Error saving routine:', error);
+      // Don't close on error - let user see the error
     } finally {
       setLoading(false);
     }

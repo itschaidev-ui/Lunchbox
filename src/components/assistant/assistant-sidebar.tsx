@@ -748,9 +748,11 @@ export function AssistantSidebar({ isOpen, onClose, initialMessages = [], select
                         )}
                       </div>
                       {message.role === 'user' && (
-                        <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center shrink-0">
-                          <User className="h-4 w-4 text-gray-300" />
-                        </div>
+                        <Avatar className="w-8 h-8 shrink-0">
+                          <AvatarFallback className="bg-gradient-to-r from-green-500 to-teal-600 text-white text-xs font-semibold">
+                            {user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+                          </AvatarFallback>
+                        </Avatar>
                       )}
                     </div>
                   )

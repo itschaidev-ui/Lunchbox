@@ -35,6 +35,7 @@ const Markdown = ({ text }: { text: string }) => {
       .replace(/^## (.*$)/gim, '<h2>$1</h2>')
       .replace(/^# (.*$)/gim, '<h1>$1</h1>')
       .replace(/\n\s*-\s/g, '</li><li>')
+      .replace(/\n\s*\*\s/g, '</li><li>')  // Support * as bullet point (single asterisk)
       .replace(/\n\d+\.\s/g, '</li><li>')
       .replace(/\n(?!<li|<\/ul>|<\/ol>|<h1>|<h2>|<h3>)/g, '<br/>');
 
