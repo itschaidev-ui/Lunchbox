@@ -2139,15 +2139,56 @@ export default function AssistantPage() {
       </div>
               <div className="flex flex-wrap gap-2">
                 {uploadedFiles.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-background px-3 py-2 rounded-md text-sm">
+                  <div 
+                    key={index} 
+                    className="flex items-center gap-2 bg-background px-3 py-2 rounded-md text-sm cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      // Safe file opening for mobile PWA
+                      try {
+                        if (file.fileType.startsWith('image/')) {
+                          // For images, use modal on mobile PWA
+                          if (window.matchMedia('(display-mode: standalone)').matches || 
+                              (window.navigator as any).standalone) {
+                            const modal = document.createElement('div');
+                            modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                            modal.onclick = () => modal.remove();
+                            
+                            const img = document.createElement('img');
+                            img.src = file.fileUrl;
+                            img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+                            img.onclick = (e) => e.stopPropagation();
+                            
+                            modal.appendChild(img);
+                            document.body.appendChild(modal);
+                          } else {
+                            // Regular browser - open in new tab
+                            window.open(file.fileUrl, '_blank', 'noopener,noreferrer');
+                          }
+                        } else {
+                          // For other files, use link download
+                          const link = document.createElement('a');
+                          link.href = file.fileUrl;
+                          link.target = '_blank';
+                          link.rel = 'noopener noreferrer';
+                          link.download = file.fileName;
+                          link.click();
+                        }
+                      } catch (error) {
+                        console.error('Error opening file:', error);
+                        // Fallback
+                        window.open(file.fileUrl, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                  >
                     {file.fileType.startsWith('image/') ? (
-                      <Image className="h-4 w-4 text-blue-500" />
+                      <ImageIcon className="h-4 w-4 text-blue-500" />
                     ) : file.fileType === 'application/pdf' ? (
                       <FileText className="h-4 w-4 text-red-500" />
                     ) : (
                       <File className="h-4 w-4 text-gray-500" />
                     )}
                     <span className="truncate max-w-32">{file.fileName}</span>
+                    <Download className="h-3 w-3 text-gray-400 ml-1" />
                   </div>
                 ))}
               </div>
