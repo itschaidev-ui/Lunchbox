@@ -6,6 +6,7 @@ import {
 } from '@/lib/routine-scheduler';
 import { getDb } from '@/lib/firebase-admin';
 import { getUserRoutines } from '@/lib/firebase-routines';
+import admin from 'firebase-admin';
 
 /**
  * Reset user routines using Admin SDK (bypasses security rules)
@@ -36,24 +37,48 @@ async function resetUserRoutinesWithAdmin(adminDb: any, userId: string): Promise
       });
     });
     
-    // 3. Uncheck all tasks that are part of routines (set completed = false)
+    // 3. Uncheck ALL tasks that are part of routines (set completed = false and clear completedAt)
     const updatePromises: Promise<void>[] = [];
     
     if (allRoutineTaskIds.size > 0) {
+      console.log(`📋 Found ${allRoutineTaskIds.size} unique task IDs across ${routines.length} routines`);
+      
       // Get all tasks for this user
       const tasksSnapshot = await adminDb.collection('tasks')
         .where('userId', '==', userId)
         .get();
       
+      let tasksFound = 0;
+      let tasksUpdated = 0;
+      
       tasksSnapshot.forEach((docSnap: any) => {
         const taskId = docSnap.id;
-        // If this task is part of any routine, mark it as incomplete
+        const taskData = docSnap.data();
+        tasksFound++;
+        
+        // If this task is part of any routine, mark it as incomplete (pending)
         if (allRoutineTaskIds.has(taskId)) {
+          // Update task to set completed = false and clear completedAt
+          const updateData: any = {
+            completed: false,
+          };
+          
+          // Clear completedAt if it exists
+          if (taskData.completedAt) {
+            updateData.completedAt = admin.firestore.FieldValue.delete();
+          }
+          
           updatePromises.push(
-            docSnap.ref.update({ completed: false })
+            docSnap.ref.update(updateData)
           );
+          tasksUpdated++;
+          console.log(`  ✓ Marking task ${taskId} as pending (was ${taskData.completed ? 'completed' : 'pending'})`);
         }
       });
+      
+      console.log(`📊 Tasks found: ${tasksFound}, Tasks in routines: ${tasksUpdated}`);
+    } else {
+      console.log(`⚠️ No routine tasks found to reset`);
     }
     
     await Promise.all(updatePromises);
