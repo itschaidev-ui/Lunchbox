@@ -110,14 +110,14 @@ export function RoutineFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-lg bg-gray-900 border-gray-700 max-h-[90vh] flex flex-col p-0 sm:w-[90vw] sm:max-w-xl md:max-w-2xl">
-        <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 flex-shrink-0">
+      <DialogContent className="w-full max-w-full bg-gray-900 border-gray-700 max-h-[90vh] flex flex-col p-0 sm:max-w-xl md:max-w-2xl sm:rounded-lg">
+        <DialogHeader className="px-3 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 flex-shrink-0">
           <DialogTitle className="text-xl sm:text-2xl">
             {routine ? 'Edit Routine' : 'Create New Routine'}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 px-4 sm:px-6 pb-4 sm:pb-6">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 px-3 sm:px-6 pb-4 sm:pb-6">
           <div className="flex-1 overflow-y-auto space-y-6 pr-2 -mr-2">
           {/* Routine Name */}
           <div className="space-y-2">
@@ -248,7 +248,7 @@ export function RoutineFormDialog({
           </div>
 
           {/* Actions - Sticky at bottom */}
-          <div className="flex items-center justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-gray-700 flex-shrink-0 bg-gray-900 -mx-4 sm:-mx-6 px-4 sm:px-6">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-gray-700 flex-shrink-0 bg-gray-900 -mx-3 sm:-mx-6 px-3 sm:px-6">
             <Button
               type="button"
               variant="outline"
