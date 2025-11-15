@@ -56,6 +56,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
     return 'date';
   });
   const [selectedDays, setSelectedDays] = useState<number[]>(() => task?.availableDays || []);
+  const [daysTime, setDaysTime] = useState<string>(() => task?.availableDaysTime || '09:00');
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -75,6 +76,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
         const hasAvailableDays = task.availableDays && task.availableDays.length > 0;
         setDateMode(hasAvailableDays ? 'days' : 'date');
         setSelectedDays(task.availableDays || []);
+        setDaysTime(task.availableDaysTime || '09:00');
         form.reset({
             text: task.text,
             description: task.description || '',
@@ -109,6 +111,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
         description: values.description,
         dueDate: dateMode === 'date' ? finalDueDate?.toISOString() : undefined,
         availableDays: dateMode === 'days' && selectedDays.length > 0 ? selectedDays : undefined,
+        availableDaysTime: dateMode === 'days' && selectedDays.length > 0 && daysTime ? daysTime : undefined,
         tags: values.tags,
         starred: values.starred,
     });

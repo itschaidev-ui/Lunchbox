@@ -68,6 +68,12 @@ export const saveTask = async (task: Omit<Task, 'id'>, userId: string, userEmail
     if (task.userTimezone) {
       (taskData as any).userTimezone = task.userTimezone;
     }
+    if (task.availableDays && task.availableDays.length > 0) {
+      (taskData as any).availableDays = task.availableDays;
+    }
+    if (task.availableDaysTime) {
+      (taskData as any).availableDaysTime = task.availableDaysTime;
+    }
     if (task.columnId) {
       (taskData as any).columnId = task.columnId;
     }

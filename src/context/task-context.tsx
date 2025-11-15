@@ -54,21 +54,42 @@ export function TaskProvider({ children }: { children: ReactNode }) {
             setTag('total_tasks', (tasks.length + 1).toString());
             
         // Schedule notifications for the task with new simple system
-        if (task.dueDate && user) {
+        if (user) {
             try {
-                await fetch('/api/simple-notifications/schedule', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        taskId,
-                        userId: user.uid,
-                        userEmail: user.email,
-                        userName: user.displayName || 'User',
-                        taskTitle: task.text,
-                        dueDate: task.dueDate
-                    })
-                });
-                console.log('✅ Simple notifications scheduled for task');
+                // Check if this is a day-of-week task or regular task
+                if (task.availableDays && task.availableDays.length > 0 && task.availableDaysTime) {
+                    // Day-of-week task
+                    await fetch('/api/simple-notifications/schedule', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            taskId,
+                            userId: user.uid,
+                            userEmail: user.email,
+                            userName: user.displayName || 'User',
+                            taskTitle: task.text,
+                            availableDays: task.availableDays,
+                            availableDaysTime: task.availableDaysTime,
+                            userTimezone: task.userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+                        })
+                    });
+                    console.log('✅ Day-of-week notifications scheduled for task');
+                } else if (task.dueDate) {
+                    // Regular task with due date
+                    await fetch('/api/simple-notifications/schedule', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            taskId,
+                            userId: user.uid,
+                            userEmail: user.email,
+                            userName: user.displayName || 'User',
+                            taskTitle: task.text,
+                            dueDate: task.dueDate
+                        })
+                    });
+                    console.log('✅ Simple notifications scheduled for task');
+                }
                 
                 // IMMEDIATELY check for due notifications
                 await fetch('/api/simple-notifications/process', {

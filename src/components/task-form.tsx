@@ -43,6 +43,7 @@ export function TaskForm({ onCancel }: TaskFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dateMode, setDateMode] = useState<'date' | 'days'>('date');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [daysTime, setDaysTime] = useState<string>('09:00'); // Default time for day-of-week tasks
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -272,6 +273,8 @@ export function TaskForm({ onCancel }: TaskFormProps) {
       dueDate: dateMode === 'date' ? finalDueDate?.toISOString() : undefined,
       // Store available days (only if days mode)
       availableDays: dateMode === 'days' && selectedDays.length > 0 ? selectedDays : undefined,
+      // Store time for day-of-week tasks
+      availableDaysTime: dateMode === 'days' && selectedDays.length > 0 && daysTime ? daysTime : undefined,
       // Store user's timezone for proper notification scheduling
       userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       tags: tagNames,
@@ -294,6 +297,7 @@ export function TaskForm({ onCancel }: TaskFormProps) {
     setTagInput('');
     setAttachments([]);
     setSelectedDays([]);
+    setDaysTime('09:00');
     setDateMode('date');
     onCancel();
   };
@@ -502,11 +506,26 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                       );
                     })}
                   </div>
+                  
+                  {/* Time Selection for Day-of-Week Tasks */}
+                  {selectedDays.length > 0 && (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                      <FormLabel className="text-sm font-medium whitespace-nowrap">Time:</FormLabel>
+                      <Input
+                        type="time"
+                        value={daysTime}
+                        onChange={(e) => setDaysTime(e.target.value)}
+                        className="mobile-input w-full sm:w-[140px]"
+                      />
+                    </div>
+                  )}
+                  
                   {selectedDays.length > 0 && (
                     <div className="flex items-center gap-2 px-2 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
                       <div className="h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
                       <p className="text-xs sm:text-sm text-purple-300 font-medium">
                         Available on: <span className="text-purple-200">{selectedDays.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}</span>
+                        {daysTime && <span className="text-purple-200"> at {daysTime}</span>}
                       </p>
                     </div>
                   )}
