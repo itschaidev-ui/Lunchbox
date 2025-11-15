@@ -110,14 +110,15 @@ export function RoutineFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl bg-gray-900 border-gray-700 max-h-[90vh]">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl bg-gray-900 border-gray-700 max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
           <DialogTitle className="text-2xl">
             {routine ? 'Edit Routine' : 'Create New Routine'}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 px-6 pb-6">
+          <div className="flex-1 overflow-y-auto space-y-6 pr-2 -mr-2">
           {/* Routine Name */}
           <div className="space-y-2">
             <Label htmlFor="name">Routine Name *</Label>
@@ -166,24 +167,26 @@ export function RoutineFormDialog({
 
             {/* Selected Tasks Preview */}
             {selectedTaskIds.length > 0 && (
-              <div className="flex flex-wrap gap-2 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-                {selectedTasks.map(task => (
-                  <Badge
-                    key={task.id}
-                    variant="secondary"
-                    className="text-xs px-2 py-1 bg-blue-500/20 text-blue-300 border-blue-500/30 flex items-center gap-1"
-                  >
-                    {task.text}
-                    <button
-                      type="button"
-                      onClick={() => toggleTaskSelection(task.id)}
-                      className="ml-1 hover:opacity-70"
+              <ScrollArea className="max-h-32 rounded-lg border border-gray-700 bg-gray-800/50 p-2">
+                <div className="flex flex-wrap gap-2">
+                  {selectedTasks.map(task => (
+                    <Badge
+                      key={task.id}
+                      variant="secondary"
+                      className="text-xs px-2 py-1 bg-blue-500/20 text-blue-300 border-blue-500/30 flex items-center gap-1"
                     >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+                      {task.text}
+                      <button
+                        type="button"
+                        onClick={() => toggleTaskSelection(task.id)}
+                        className="ml-1 hover:opacity-70"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </ScrollArea>
             )}
 
             {/* Task List */}
@@ -242,9 +245,10 @@ export function RoutineFormDialog({
               </p>
             )}
           </div>
+          </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-700">
+          {/* Actions - Sticky at bottom */}
+          <div className="flex items-center justify-end gap-3 pt-4 mt-4 border-t border-gray-700 flex-shrink-0 bg-gray-900 -mx-6 px-6">
             <Button
               type="button"
               variant="outline"
