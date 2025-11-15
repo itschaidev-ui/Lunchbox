@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { CalendarIcon, Star, Tag, Sparkles, Loader2, Paperclip, X as XIcon, File, Image as ImageIcon } from 'lucide-react';
+import { CalendarIcon, Star, Tag, Sparkles, Loader2, Paperclip, X as XIcon, File, Image as ImageIcon, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useRef, useState } from 'react';
@@ -364,32 +364,44 @@ export function TaskForm({ onCancel }: TaskFormProps) {
           <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
             <div className="flex flex-col gap-2">
               {/* Mode Toggle */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 p-1 bg-gray-800/50 rounded-lg border border-gray-700">
                 <Button
                   type="button"
-                  variant={dateMode === 'date' ? 'default' : 'outline'}
+                  variant="ghost"
                   size="sm"
                   onClick={() => {
                     setDateMode('date');
                     form.setValue('dueDate', undefined);
                     setSelectedDays([]);
                   }}
-                  className="flex-1"
+                  className={cn(
+                    'flex-1 transition-all duration-200',
+                    dateMode === 'date'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm'
+                      : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/50'
+                  )}
                 >
-                  Specific Date
+                  <CalendarIcon className="h-3.5 w-3.5 mr-1.5" />
+                  <span className="text-xs sm:text-sm">Date</span>
                 </Button>
                 <Button
                   type="button"
-                  variant={dateMode === 'days' ? 'default' : 'outline'}
+                  variant="ghost"
                   size="sm"
                   onClick={() => {
                     setDateMode('days');
                     form.setValue('dueDate', undefined);
                     form.setValue('dueTime', '');
                   }}
-                  className="flex-1"
+                  className={cn(
+                    'flex-1 transition-all duration-200',
+                    dateMode === 'days'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm'
+                      : 'text-gray-400 hover:text-gray-300 hover:bg-gray-700/50'
+                  )}
                 >
-                  Days of Week
+                  <Repeat className="h-3.5 w-3.5 mr-1.5" />
+                  <span className="text-xs sm:text-sm">Days</span>
                 </Button>
               </div>
 
@@ -456,11 +468,13 @@ export function TaskForm({ onCancel }: TaskFormProps) {
 
               {/* Days of Week Mode */}
               {dateMode === 'days' && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2">
+                <div className="flex flex-col gap-3">
+                  <FormLabel className="text-sm font-medium">Available Days</FormLabel>
+                  <div className="flex gap-1.5 sm:gap-2">
                     {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => {
                       const dayNumber = index === 0 ? 0 : index === 6 ? 6 : index; // Sunday=0, Monday=1, etc.
                       const isSelected = selectedDays.includes(dayNumber);
+                      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                       return (
                         <Button
                           key={index}
@@ -468,8 +482,11 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                           variant={isSelected ? 'default' : 'outline'}
                           size="sm"
                           className={cn(
-                            'w-10 h-10 p-0 flex-1',
-                            isSelected && 'bg-purple-500 hover:bg-purple-600 text-white'
+                            'h-10 w-10 sm:h-11 sm:w-11 p-0 flex-shrink-0 transition-all duration-200',
+                            isSelected 
+                              ? 'bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-md shadow-purple-500/30 scale-105' 
+                              : 'border-gray-600 hover:border-purple-500/50 hover:bg-purple-500/10 text-gray-400 hover:text-purple-300',
+                            'font-semibold text-sm sm:text-base'
                           )}
                           onClick={() => {
                             if (isSelected) {
@@ -478,6 +495,7 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                               setSelectedDays([...selectedDays, dayNumber].sort());
                             }
                           }}
+                          title={dayNames[dayNumber]}
                         >
                           {day}
                         </Button>
@@ -485,8 +503,16 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                     })}
                   </div>
                   {selectedDays.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Task available on: {selectedDays.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}
+                    <div className="flex items-center gap-2 px-2 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                      <div className="h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
+                      <p className="text-xs sm:text-sm text-purple-300 font-medium">
+                        Available on: <span className="text-purple-200">{selectedDays.map(d => dayNames[d]).join(', ')}</span>
+                      </p>
+                    </div>
+                  )}
+                  {selectedDays.length === 0 && (
+                    <p className="text-xs text-muted-foreground px-2">
+                      Select days when this task should be available
                     </p>
                   )}
                 </div>
