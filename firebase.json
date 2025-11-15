@@ -4,7 +4,10 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "discord-bot",
+      ".env",
+      ".env.local"
     ],
     "frameworksBackend": {
       "region": "us-west1"
