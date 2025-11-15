@@ -218,27 +218,35 @@ export default function RoutinesPage() {
   useEffect(() => {
     if (!user?.uid) return;
 
+    // Use a ref to track processing to prevent race conditions
+    const processingRoutines = new Set<string>();
+
     routines.forEach(async (routine) => {
       if (!routine.isActive) return;
       if (completedRoutineIds.has(routine.id)) return; // Already completed today
+      if (processingRoutines.has(routine.id)) return; // Already processing
 
       const routineTasks = tasks.filter(task => routine.taskIds.includes(task.id));
       const allCompleted = routineTasks.length > 0 && routineTasks.every(task => task.completed);
 
       if (allCompleted) {
-        // Double-check in Firebase to prevent race conditions
+        // Mark as processing to prevent duplicate execution
+        processingRoutines.add(routine.id);
+        
+        // FIRST: Check and mark as completed in Firebase (atomic operation prevents duplicates)
         const alreadyCompleted = await hasCompletedRoutineToday(user.uid, routine.id);
         if (alreadyCompleted) {
           console.log(`⚠️ Routine ${routine.name} already completed today, skipping credit award`);
           setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
+          processingRoutines.delete(routine.id);
           return;
         }
 
-        // Award credits
+        // Calculate credits
         const credits = calculateFullRoutineBonus(routineTasks.length);
-        await earnCredits(credits, `Completed routine: ${routine.name}`, 'bonus', undefined, routine.id);
         
-        // Mark as completed in Firebase (prevents exploit) - use API route for proper permissions
+        // SECOND: Mark as completed in Firebase FIRST (before awarding credits)
+        // This prevents race conditions where multiple checks happen simultaneously
         try {
           const response = await fetch('/api/routines/complete', {
             method: 'POST',
@@ -255,26 +263,43 @@ export default function RoutinesPage() {
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
             console.error('Failed to mark routine completed:', errorData);
-            // Continue anyway - credits were already awarded
+            processingRoutines.delete(routine.id);
+            return; // Don't award credits if marking failed
           }
+
+          const responseData = await response.json();
+          
+          // Check if it was already completed (race condition protection)
+          if (responseData.alreadyCompleted) {
+            console.log(`⚠️ Routine ${routine.name} was already completed (race condition prevented), skipping credit award`);
+            setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
+            processingRoutines.delete(routine.id);
+            return;
+          }
+
+          // THIRD: Only award credits AFTER successfully marking as completed
+          await earnCredits(credits, `Completed routine: ${routine.name}`, 'bonus', undefined, routine.id);
+          
+          // Update local state
+          setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
+
+          // Refresh credits display
+          setTimeout(() => {
+            refreshCredits();
+          }, 500);
+
+          // Show celebration
+          alert(`🎉 Routine Complete!\n\nYou earned ${credits} credits for completing "${routine.name}"!\n\nTasks are now locked until tomorrow.`);
         } catch (error) {
           console.error('Error calling routine complete API:', error);
-          // Continue anyway - credits were already awarded
+          processingRoutines.delete(routine.id);
+          return; // Don't award credits if there was an error
+        } finally {
+          processingRoutines.delete(routine.id);
         }
-        
-        // Update local state
-        setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
-
-        // Refresh credits display
-        setTimeout(() => {
-          refreshCredits();
-        }, 500);
-
-        // Show celebration
-        alert(`🎉 Routine Complete!\n\nYou earned ${credits} credits for completing "${routine.name}"!\n\nTasks are now locked until tomorrow.`);
       }
     });
-  }, [tasks, routines, completedRoutineIds, earnCredits, user?.uid]);
+  }, [tasks, routines, completedRoutineIds, earnCredits, user?.uid, refreshCredits]);
 
   // Calculate overall stats
   const activeRoutines = routines.filter(r => r.isActive);

@@ -27,7 +27,21 @@ export async function POST(request: NextRequest) {
     const today = now.toISOString().split('T')[0];
     const completionId = `${userId}_${routineId}_${today}`;
     
-    await adminDb.collection('routine_completions').doc(completionId).set({
+    // Check if already completed (atomic check-and-set)
+    const completionRef = adminDb.collection('routine_completions').doc(completionId);
+    const existingCompletion = await completionRef.get();
+    
+    if (existingCompletion.exists) {
+      // Already completed today - return success but indicate it was already done
+      return NextResponse.json({
+        success: true,
+        alreadyCompleted: true,
+        message: `Routine ${routineId} was already marked as completed for ${today}`,
+      });
+    }
+    
+    // Atomically set the completion (prevents duplicate awards)
+    await completionRef.set({
       routineId,
       userId,
       completedAt: now.toISOString(),
@@ -37,6 +51,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      alreadyCompleted: false,
       message: `Routine ${routineId} marked as completed for ${today}`,
     });
   } catch (error: any) {
