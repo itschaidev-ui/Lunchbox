@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from './ui/textarea';
 import { useTasks } from '@/context/task-context';
 import type { Task } from '@/lib/types';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CalendarIcon, Star, Tag as TagIcon, X } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Checkbox } from './ui/checkbox';
@@ -48,6 +48,14 @@ interface EditTaskDialogProps {
 export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogProps) {
   const { editTask } = useTasks();
   const timeInputRef = useRef<HTMLInputElement>(null);
+  const [dateMode, setDateMode] = useState<'date' | 'days'>(() => {
+    // Determine mode based on task data
+    if (task?.availableDays && task.availableDays.length > 0) {
+      return 'days';
+    }
+    return 'date';
+  });
+  const [selectedDays, setSelectedDays] = useState<number[]>(() => task?.availableDays || []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -64,6 +72,9 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
   useEffect(() => {
     if (task && isOpen) {
         const dueDate = task.dueDate ? parseISO(task.dueDate) : undefined;
+        const hasAvailableDays = task.availableDays && task.availableDays.length > 0;
+        setDateMode(hasAvailableDays ? 'days' : 'date');
+        setSelectedDays(task.availableDays || []);
         form.reset({
             text: task.text,
             description: task.description || '',
@@ -96,8 +107,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
     editTask(task.id, {
         text: values.text,
         description: values.description,
-        dueDate: finalDueDate?.toISOString(),
-        availableDays: values.availableDays,
+        dueDate: dateMode === 'date' ? finalDueDate?.toISOString() : undefined,
+        availableDays: dateMode === 'days' && selectedDays.length > 0 ? selectedDays : undefined,
         tags: values.tags,
         starred: values.starred,
     });
@@ -146,48 +157,81 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
                 </FormItem>
               )}
             />
-            <div className="flex items-center gap-2">
-               <FormField
-                  control={form.control}
-                  name="dueDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Due Date</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={'outline'}
-                            className={cn(
-                              'w-[200px] justify-start text-left font-normal',
-                              !field.value && 'text-muted-foreground'
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={(date) => {
-                              field.onChange(date);
-                              setTimeout(() => timeInputRef.current?.focus(), 0);
-                            }}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="dueTime"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Time</FormLabel>
-                      <FormControl>
+            <div className="flex flex-col gap-2">
+              {/* Mode Toggle */}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={dateMode === 'date' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setDateMode('date');
+                    form.setValue('dueDate', undefined);
+                    setSelectedDays([]);
+                  }}
+                  className="flex-1"
+                >
+                  Specific Date
+                </Button>
+                <Button
+                  type="button"
+                  variant={dateMode === 'days' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setDateMode('days');
+                    form.setValue('dueDate', undefined);
+                    form.setValue('dueTime', '');
+                  }}
+                  className="flex-1"
+                >
+                  Days of Week
+                </Button>
+              </div>
+
+              {/* Date Picker Mode */}
+              {dateMode === 'date' && (
+                <div className="flex items-center gap-2">
+                  <FormField
+                    control={form.control}
+                    name="dueDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Due Date</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={'outline'}
+                              className={cn(
+                                'w-[200px] justify-start text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {field.value ? format(field.value, 'PPP') : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={(date) => {
+                                field.onChange(date);
+                                setTimeout(() => timeInputRef.current?.focus(), 0);
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="dueTime"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Time</FormLabel>
+                        <FormControl>
                           <Input 
                             type="time" 
                             className="w-[120px]" 
@@ -195,11 +239,52 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
                             ref={timeInputRef}
                             disabled={!form.watch('dueDate')}
                           />
-                      </FormControl>
-                    </FormItem>
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Days of Week Mode */}
+              {dateMode === 'days' && (
+                <div className="flex flex-col gap-2">
+                  <FormLabel>Available Days</FormLabel>
+                  <div className="flex gap-2">
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => {
+                      const dayNumber = index === 0 ? 0 : index === 6 ? 6 : index; // Sunday=0, Monday=1, etc.
+                      const isSelected = selectedDays.includes(dayNumber);
+                      return (
+                        <Button
+                          key={index}
+                          type="button"
+                          variant={isSelected ? 'default' : 'outline'}
+                          size="sm"
+                          className={cn(
+                            'w-10 h-10 p-0 flex-1',
+                            isSelected && 'bg-purple-500 hover:bg-purple-600 text-white'
+                          )}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedDays(selectedDays.filter(d => d !== dayNumber));
+                            } else {
+                              setSelectedDays([...selectedDays, dayNumber].sort());
+                            }
+                          }}
+                        >
+                          {day}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  {selectedDays.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Task available on: {selectedDays.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}
+                    </p>
                   )}
-                />
-              </div>
+                </div>
+              )}
+            </div>
 
             {/* Tags Field */}
             <FormField
