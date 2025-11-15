@@ -40,7 +40,6 @@ import { RoutineSettingsDialog } from '@/components/routines/routine-settings-di
 import { Header } from '@/components/layout/header';
 import {
   hasCompletedRoutineToday,
-  markRoutineCompleted,
   getTodayCompletedRoutines,
 } from '@/lib/firebase-routine-completions';
 import { getRoutineSettings } from '@/lib/firebase-routine-settings';

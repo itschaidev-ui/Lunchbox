@@ -285,7 +285,7 @@ export async function awardTaskCompletionCredits(
     });
     
     // Log transaction outside of the main transaction (non-blocking)
-    if (result.success && result.amount) {
+    if (result.success && result.amount && taskId) {
       try {
         await logCreditTransaction(userId, result.amount, 'earn', 'task_completion', taskId);
       } catch (logError) {
