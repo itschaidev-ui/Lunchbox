@@ -132,6 +132,25 @@ function DiscordCallbackContent() {
           console.log('Linking Discord to existing account:', { userId: userId.substring(0, 20) });
           setMessage('Linking accounts...');
           
+          // Get Discord avatar URL if available
+          const discordPhotoURL = discordUser.avatar 
+            ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` 
+            : undefined;
+          
+          // Update Firebase Auth profile with Discord photo if user doesn't have one or wants to use Discord photo
+          const currentUser = auth.currentUser;
+          if (currentUser && discordPhotoURL) {
+            try {
+              await updateProfile(currentUser, {
+                photoURL: discordPhotoURL, // Update with Discord avatar
+              });
+              console.log('Updated Firebase Auth profile with Discord photo');
+            } catch (profileError) {
+              console.warn('Could not update profile photo:', profileError);
+              // Continue even if profile update fails
+            }
+          }
+          
           const linkPayload = {
             discordId: discordUser.id,
             email: email || '',

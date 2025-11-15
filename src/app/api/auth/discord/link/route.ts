@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/firebase-admin';
+import { getAuth } from 'firebase-admin/auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +37,11 @@ export async function POST(request: NextRequest) {
 
     await adminDb.collection('discord_links').doc(discordId).set(linkData, { merge: true });
 
+    // Get Discord avatar URL if available
+    const discordPhotoURL = discordUser?.avatar 
+      ? `https://cdn.discordapp.com/avatars/${discordId}/${discordUser.avatar}.png` 
+      : undefined;
+    
     // Also update user document with Discord info
     try {
       const userRef = adminDb.collection('users').doc(uid);
@@ -43,11 +49,26 @@ export async function POST(request: NextRequest) {
         discordId,
         discordUsername: discordUser?.username || discordUser?.global_name || username,
         discordAvatar: discordUser?.avatar || null,
+        photoURL: discordPhotoURL, // Also update photoURL in Firestore
         discordEnabled: true,
       }, { merge: true });
     } catch (userError) {
       console.warn('Could not update user document:', userError);
       // Continue even if user doc update fails
+    }
+    
+    // Update Firebase Auth profile with Discord photo if available
+    if (discordPhotoURL) {
+      try {
+        const adminAuth = getAuth();
+        await adminAuth.updateUser(uid, {
+          photoURL: discordPhotoURL,
+        });
+        console.log('Updated Firebase Auth profile with Discord photo');
+      } catch (authError) {
+        console.warn('Could not update Firebase Auth profile photo:', authError);
+        // Continue even if auth profile update fails
+      }
     }
 
     return NextResponse.json({ 
