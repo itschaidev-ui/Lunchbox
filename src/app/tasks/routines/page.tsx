@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Repeat,
@@ -56,6 +56,8 @@ export default function RoutinesPage() {
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [completedRoutineIds, setCompletedRoutineIds] = useState<Set<string>>(new Set());
   const [resetTime, setResetTime] = useState<string>('00:00');
+  // Use ref to track processing routines across renders (prevents duplicate awards)
+  const processingRoutinesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (user?.uid) {
@@ -218,36 +220,37 @@ export default function RoutinesPage() {
   useEffect(() => {
     if (!user?.uid) return;
 
-    // Use a ref to track processing to prevent race conditions
-    const processingRoutines = new Set<string>();
-
     routines.forEach(async (routine) => {
       if (!routine.isActive) return;
       if (completedRoutineIds.has(routine.id)) return; // Already completed today
-      if (processingRoutines.has(routine.id)) return; // Already processing
+      if (processingRoutinesRef.current.has(routine.id)) {
+        console.log(`⏸️ Routine ${routine.id} is already being processed, skipping...`);
+        return; // Already processing
+      }
 
       const routineTasks = tasks.filter(task => routine.taskIds.includes(task.id));
       const allCompleted = routineTasks.length > 0 && routineTasks.every(task => task.completed);
 
       if (allCompleted) {
-        // Mark as processing to prevent duplicate execution
-        processingRoutines.add(routine.id);
+        // Mark as processing IMMEDIATELY to prevent duplicate execution
+        processingRoutinesRef.current.add(routine.id);
+        console.log(`🔄 Processing routine ${routine.id} (${routine.name})...`);
         
-        // FIRST: Check and mark as completed in Firebase (atomic operation prevents duplicates)
-        const alreadyCompleted = await hasCompletedRoutineToday(user.uid, routine.id);
-        if (alreadyCompleted) {
-          console.log(`⚠️ Routine ${routine.name} already completed today, skipping credit award`);
-          setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
-          processingRoutines.delete(routine.id);
-          return;
-        }
-
-        // Calculate credits
-        const credits = calculateFullRoutineBonus(routineTasks.length);
-        
-        // SECOND: Mark as completed in Firebase FIRST (before awarding credits)
-        // This prevents race conditions where multiple checks happen simultaneously
         try {
+          // FIRST: Check and mark as completed in Firebase (atomic operation prevents duplicates)
+          const alreadyCompleted = await hasCompletedRoutineToday(user.uid, routine.id);
+          if (alreadyCompleted) {
+            console.log(`⚠️ Routine ${routine.name} already completed today, skipping credit award`);
+            setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
+            processingRoutinesRef.current.delete(routine.id);
+            return;
+          }
+
+          // Calculate credits
+          const credits = calculateFullRoutineBonus(routineTasks.length);
+          
+          // SECOND: Mark as completed in Firebase FIRST (before awarding credits)
+          // This prevents race conditions where multiple checks happen simultaneously
           const response = await fetch('/api/routines/complete', {
             method: 'POST',
             headers: {
@@ -263,7 +266,7 @@ export default function RoutinesPage() {
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
             console.error('Failed to mark routine completed:', errorData);
-            processingRoutines.delete(routine.id);
+            processingRoutinesRef.current.delete(routine.id);
             return; // Don't award credits if marking failed
           }
 
@@ -273,11 +276,12 @@ export default function RoutinesPage() {
           if (responseData.alreadyCompleted) {
             console.log(`⚠️ Routine ${routine.name} was already completed (race condition prevented), skipping credit award`);
             setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
-            processingRoutines.delete(routine.id);
+            processingRoutinesRef.current.delete(routine.id);
             return;
           }
 
           // THIRD: Only award credits AFTER successfully marking as completed
+          console.log(`✅ Awarding ${credits} credits for routine ${routine.id}`);
           await earnCredits(credits, `Completed routine: ${routine.name}`, 'bonus', undefined, routine.id);
           
           // Update local state
@@ -292,10 +296,12 @@ export default function RoutinesPage() {
           alert(`🎉 Routine Complete!\n\nYou earned ${credits} credits for completing "${routine.name}"!\n\nTasks are now locked until tomorrow.`);
         } catch (error) {
           console.error('Error calling routine complete API:', error);
-          processingRoutines.delete(routine.id);
+          processingRoutinesRef.current.delete(routine.id);
           return; // Don't award credits if there was an error
         } finally {
-          processingRoutines.delete(routine.id);
+          // Always remove from processing set
+          processingRoutinesRef.current.delete(routine.id);
+          console.log(`✅ Finished processing routine ${routine.id}`);
         }
       }
     });
