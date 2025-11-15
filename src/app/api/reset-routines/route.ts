@@ -4,6 +4,68 @@ import {
   resetUserRoutines,
   getRoutineStats,
 } from '@/lib/routine-scheduler';
+import { getDb } from '@/lib/firebase-admin';
+import { getUserRoutines } from '@/lib/firebase-routines';
+
+/**
+ * Reset user routines using Admin SDK (bypasses security rules)
+ */
+async function resetUserRoutinesWithAdmin(adminDb: any, userId: string): Promise<number> {
+  try {
+    console.log(`🔄 Resetting routines for user: ${userId} (Admin SDK)`);
+    
+    // 1. Delete all routine completions
+    const completionsSnapshot = await adminDb.collection('routine_completions')
+      .where('userId', '==', userId)
+      .get();
+    
+    const deletePromises: Promise<void>[] = [];
+    completionsSnapshot.forEach((docSnap: any) => {
+      deletePromises.push(docSnap.ref.delete());
+    });
+    
+    await Promise.all(deletePromises);
+    
+    // 2. Get all routines for this user and collect all task IDs
+    const routines = await getUserRoutines(userId);
+    const allRoutineTaskIds = new Set<string>();
+    
+    routines.forEach((routine) => {
+      routine.taskIds.forEach((taskId) => {
+        allRoutineTaskIds.add(taskId);
+      });
+    });
+    
+    // 3. Uncheck all tasks that are part of routines (set completed = false)
+    const updatePromises: Promise<void>[] = [];
+    
+    if (allRoutineTaskIds.size > 0) {
+      // Get all tasks for this user
+      const tasksSnapshot = await adminDb.collection('tasks')
+        .where('userId', '==', userId)
+        .get();
+      
+      tasksSnapshot.forEach((docSnap: any) => {
+        const taskId = docSnap.id;
+        // If this task is part of any routine, mark it as incomplete
+        if (allRoutineTaskIds.has(taskId)) {
+          updatePromises.push(
+            docSnap.ref.update({ completed: false })
+          );
+        }
+      });
+    }
+    
+    await Promise.all(updatePromises);
+    
+    console.log(`✅ Reset ${deletePromises.length} completions and unchecked ${updatePromises.length} routine tasks for user ${userId}`);
+    console.log(`📋 Routines found: ${routines.length}, Total unique task IDs: ${allRoutineTaskIds.size}`);
+    return deletePromises.length;
+  } catch (error) {
+    console.error(`❌ Error resetting routines for user ${userId}:`, error);
+    throw error;
+  }
+}
 
 /**
  * API endpoint for manual routine resets
@@ -64,9 +126,19 @@ export async function POST(request: NextRequest) {
     let resetCount: number;
 
     if (userId) {
-      // Reset specific user's routines
+      // Reset specific user's routines using Admin SDK
       console.log(`🔄 Resetting routines for user: ${userId}`);
-      resetCount = await resetUserRoutines(userId);
+      
+      const adminDb = getDb();
+      if (!adminDb) {
+        return NextResponse.json(
+          { success: false, error: 'Firebase Admin not initialized' },
+          { status: 500 }
+        );
+      }
+
+      // Use Admin SDK to reset routines (bypasses security rules)
+      resetCount = await resetUserRoutinesWithAdmin(adminDb, userId);
       
       return NextResponse.json({
         success: true,
