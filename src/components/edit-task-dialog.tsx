@@ -32,6 +32,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   dueDate: z.date().optional(),
   dueTime: z.string().optional(),
+  availableDays: z.array(z.number()).optional(), // Days of week (0=Sunday, 1=Monday, ..., 6=Saturday)
   tags: z.array(z.string()).optional(),
   starred: z.boolean().optional(),
 });
@@ -68,6 +69,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
             description: task.description || '',
             dueDate: dueDate,
             dueTime: dueDate ? format(dueDate, 'HH:mm') : '',
+            availableDays: task.availableDays || [],
             tags: task.tags || [],
             starred: task.starred || false,
         })
@@ -95,6 +97,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task }: EditTaskDialogPro
         text: values.text,
         description: values.description,
         dueDate: finalDueDate?.toISOString(),
+        availableDays: values.availableDays,
         tags: values.tags,
         starred: values.starred,
     });

@@ -5,7 +5,7 @@ import type { Task, KanbanColumn } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import * as Icons from 'lucide-react';
-import { MoreVertical, Flag, Trash2, ChevronDown, Timer, Edit, Clock, PlayCircle, CheckSquare, Star, Tag as TagIcon, Paperclip, File, Image as ImageIcon, Download, ExternalLink } from 'lucide-react';
+import { MoreVertical, Flag, Trash2, ChevronDown, Timer, Edit, Clock, PlayCircle, CheckSquare, Star, Tag as TagIcon, Paperclip, File, Image as ImageIcon, Download, ExternalLink, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, isPast, parseISO } from 'date-fns';
 import { Badge } from './ui/badge';
@@ -65,6 +65,10 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
   const [isTimerOpen, setIsTimerOpen] = useState(false);
   const { user } = useAuth();
   const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !task.completed;
+  
+  // Check if task is locked (has availableDays but today is not in the list)
+  const isLocked = task.availableDays && task.availableDays.length > 0 && 
+    !task.availableDays.includes(new Date().getDay());
   
   // Debug: Log task data to see if tags are present
   console.log('Task data:', task.id, task.text, 'tags:', task.tags, 'starred:', task.starred);
@@ -297,7 +301,7 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
           </div>
         ) : (
           <div
-            className="h-5 w-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-110"
+            className="h-5 w-5 rounded border-2 flex items-center justify-center transition-all duration-200 hover:scale-110"
             style={{
               backgroundColor: task.completed
                 ? 'rgb(107, 114, 128)' 
@@ -308,10 +312,12 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
                 ? 'rgb(107, 114, 128)' 
                 : currentColumn.id === 'todo' 
                 ? 'rgb(75, 85, 99)' 
-                : getColorStyles(currentColumn.color).border
+                : getColorStyles(currentColumn.color).border,
+              cursor: isLocked ? 'not-allowed' : 'pointer',
+              opacity: isLocked ? 0.5 : 1,
             }}
-            onClick={() => { handleToggleProgress(); }}
-            title={currentColumn.title}
+            onClick={() => { if (!isLocked) handleToggleProgress(); }}
+            title={isLocked ? 'Task locked - not available today' : currentColumn.title}
           >
             {!task.completed && currentColumn.id !== 'todo' && currentColumn.id !== 'completed' && (
               <ColumnIcon className={`${currentColumn.color} h-3 w-3 transition-all duration-200`} />
@@ -320,11 +326,16 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
         )}
         <div className="flex-1">
           <div className="flex items-center gap-2">
+            {isLocked && (
+              <div title="Task not available today">
+                <Lock className="h-4 w-4 text-gray-500 shrink-0" />
+              </div>
+            )}
             <label
               htmlFor={`task-${task.id}`}
               className={cn(
-                'mobile-body font-medium cursor-pointer transition-colors',
-                task.completed ? 'text-muted-foreground line-through' : 'text-foreground'
+                'mobile-body font-medium transition-colors',
+                isLocked ? 'text-muted-foreground cursor-not-allowed' : task.completed ? 'text-muted-foreground line-through cursor-pointer' : 'text-foreground cursor-pointer'
               )}
             >
               {task.text}

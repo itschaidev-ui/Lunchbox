@@ -4,6 +4,7 @@ export type Task = {
   text: string;
   completed: boolean;
   dueDate?: string;
+  availableDays?: number[]; // Days of week when task is available (0=Sunday, 1=Monday, ..., 6=Saturday)
   description?: string;
   tags?: string[]; // Tags for categorizing tasks
   tagColors?: Record<string, string>; // Map of tag -> color (e.g., {"work": "blue", "urgent": "red"})

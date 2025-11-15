@@ -311,6 +311,14 @@ function TasksPageContent() {
   const filteredTasks = useMemo(() => 
     tasks
       .filter(task => {
+        // Check if task is available today (for day-of-week tasks)
+        if (task.availableDays && task.availableDays.length > 0) {
+          const today = new Date().getDay(); // 0=Sunday, 1=Monday, etc.
+          if (!task.availableDays.includes(today)) {
+            return false; // Hide task if not available today
+          }
+        }
+        
         if (filter === 'all') return true;
         if (filter === 'active') return !task.completed;
         if (filter === 'completed') return task.completed;
