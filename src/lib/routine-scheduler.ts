@@ -18,6 +18,7 @@ import {
 import type { Routine } from './types';
 import { getLastReset, updateLastReset, needsReset } from './firebase-last-reset';
 import { getRoutineSettings } from './firebase-routine-settings';
+import { getUserRoutines } from './firebase-routines';
 
 /**
  * Reset routines for a specific user
@@ -39,22 +40,36 @@ export async function resetUserRoutines(userId: string): Promise<number> {
     
     await Promise.all(deletePromises);
     
-    // 2. Uncheck all routine tasks (set completed = false)
-    const tasksRef = collection(db, 'tasks');
-    const tasksQuery = query(
-      tasksRef, 
-      where('userId', '==', userId),
-      where('isRoutine', '==', true)
-    );
-    const tasksSnapshot = await getDocs(tasksQuery);
+    // 2. Get all routines for this user and collect all task IDs
+    const routines = await getUserRoutines(userId);
+    const allRoutineTaskIds = new Set<string>();
     
-    const updatePromises: Promise<void>[] = [];
-    tasksSnapshot.forEach((docSnap) => {
-      const taskRef = doc(db, 'tasks', docSnap.id);
-      updatePromises.push(
-        setDoc(taskRef, { completed: false }, { merge: true })
-      );
+    routines.forEach((routine) => {
+      routine.taskIds.forEach((taskId) => {
+        allRoutineTaskIds.add(taskId);
+      });
     });
+    
+    // 3. Uncheck all tasks that are part of routines (set completed = false)
+    const updatePromises: Promise<void>[] = [];
+    
+    if (allRoutineTaskIds.size > 0) {
+      // Get all tasks for this user
+      const tasksRef = collection(db, 'tasks');
+      const tasksQuery = query(tasksRef, where('userId', '==', userId));
+      const tasksSnapshot = await getDocs(tasksQuery);
+      
+      tasksSnapshot.forEach((docSnap) => {
+        const taskId = docSnap.id;
+        // If this task is part of any routine, mark it as incomplete
+        if (allRoutineTaskIds.has(taskId)) {
+          const taskRef = doc(db, 'tasks', taskId);
+          updatePromises.push(
+            setDoc(taskRef, { completed: false }, { merge: true })
+          );
+        }
+      });
+    }
     
     await Promise.all(updatePromises);
     
