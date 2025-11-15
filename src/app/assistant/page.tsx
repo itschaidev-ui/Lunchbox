@@ -1923,10 +1923,10 @@ export default function AssistantPage() {
 
                            {message.role === 'user' && (
                 <Avatar className="h-8 w-8 md:h-10 md:w-10 shrink-0">
-                  <AvatarFallback className="bg-secondary text-secondary-foreground">
-                    <User className="h-4 w-4 md:h-5 md:w-5" />
-                                   </AvatarFallback>
-                               </Avatar>
+                  <AvatarFallback className="bg-gradient-to-r from-green-500 to-teal-600 text-white text-xs md:text-sm font-semibold">
+                    {user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
                            )}
             </motion.div>
           ))}
