@@ -471,12 +471,11 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                 <div className="flex flex-col gap-3">
                   <FormLabel className="text-sm font-medium">Available Days</FormLabel>
                   <div className="flex gap-1.5 sm:gap-2">
-                    {(() => {
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => {
+                      const dayNumber = index === 0 ? 0 : index === 6 ? 6 : index; // Sunday=0, Monday=1, etc.
+                      const isSelected = selectedDays.includes(dayNumber);
                       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                      return ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => {
-                        const dayNumber = index === 0 ? 0 : index === 6 ? 6 : index; // Sunday=0, Monday=1, etc.
-                        const isSelected = selectedDays.includes(dayNumber);
-                        return (
+                      return (
                         <Button
                           key={index}
                           type="button"
@@ -500,9 +499,8 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                         >
                           {day}
                         </Button>
-                        );
-                      });
-                    })()}
+                      );
+                    })}
                   </div>
                   {selectedDays.length > 0 && (
                     <div className="flex items-center gap-2 px-2 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">

@@ -15,7 +15,7 @@ import {
   setDoc,
 } from 'firebase/firestore';
 
-import type { Routine } from './types';
+import type { Routine, Task } from './types';
 import { getLastReset, updateLastReset, needsReset } from './firebase-last-reset';
 import { getRoutineSettings } from './firebase-routine-settings';
 import { getUserRoutines } from './firebase-routines';
@@ -232,6 +232,54 @@ export async function manualResetAllRoutines(): Promise<number> {
     return deletePromises.length;
   } catch (error) {
     console.error('❌ Error in manual reset:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reset day-of-week tasks at midnight
+ * Unchecks tasks with availableDays that are completed, so they're fresh for the new day
+ */
+export async function resetDayOfWeekTasks(): Promise<number> {
+  try {
+    console.log('🔄 Resetting day-of-week tasks at midnight...');
+    
+    const today = new Date().getDay(); // 0=Sunday, 1=Monday, etc.
+    let resetCount = 0;
+    
+    // Get all tasks with availableDays
+    const tasksRef = collection(db, 'tasks');
+    const tasksSnapshot = await getDocs(tasksRef);
+    
+    const updatePromises: Promise<void>[] = [];
+    
+    tasksSnapshot.forEach((docSnap) => {
+      const task = { id: docSnap.id, ...docSnap.data() } as Task;
+      
+      // Only process tasks with availableDays that are completed
+      if (task.availableDays && task.availableDays.length > 0 && task.completed) {
+        // Check if today is one of the available days
+        if (task.availableDays.includes(today)) {
+          // Uncheck the task so it's fresh for today
+          const taskRef = doc(db, 'tasks', task.id);
+          updatePromises.push(
+            setDoc(taskRef, { 
+              completed: false,
+              completedAt: null,
+            }, { merge: true })
+          );
+          resetCount++;
+          console.log(`  ✓ Resetting task "${task.text}" for day ${today}`);
+        }
+      }
+    });
+    
+    await Promise.all(updatePromises);
+    
+    console.log(`✅ Reset ${resetCount} day-of-week tasks for day ${today}`);
+    return resetCount;
+  } catch (error) {
+    console.error('❌ Error resetting day-of-week tasks:', error);
     throw error;
   }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkAndProcessNotifications } from '@/lib/notifications/simple-task-notifications';
-import { checkAndResetRoutines } from '@/lib/routine-scheduler';
+import { checkAndResetRoutines, resetDayOfWeekTasks } from '@/lib/routine-scheduler';
 import { checkTaskCompletionEmails } from '@/lib/notifications/completion-email-cron';
 
 export async function GET(request: NextRequest) {
@@ -14,6 +14,18 @@ export async function GET(request: NextRequest) {
     
     // Check and reset routines if it's midnight
     await checkAndResetRoutines();
+    
+    // Reset day-of-week tasks at midnight (uncheck completed tasks so they're fresh for the new day)
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    
+    // Run at midnight (00:00) or within the first minute of each hour (for testing)
+    if (currentMinute === 0 || (currentHour === 0 && currentMinute < 1)) {
+      console.log('🔄 Resetting day-of-week tasks...');
+      const resetCount = await resetDayOfWeekTasks();
+      console.log(`✅ Reset ${resetCount} day-of-week tasks`);
+    }
     
     return NextResponse.json({
       success: true,
