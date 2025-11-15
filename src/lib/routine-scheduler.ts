@@ -74,6 +74,7 @@ export async function resetUserRoutines(userId: string): Promise<number> {
     await Promise.all(updatePromises);
     
     console.log(`✅ Reset ${deletePromises.length} completions and unchecked ${updatePromises.length} routine tasks for user ${userId}`);
+    console.log(`📋 Routines found: ${routines.length}, Total unique task IDs: ${allRoutineTaskIds.size}`);
     return deletePromises.length;
   } catch (error) {
     console.error(`❌ Error resetting routines for user ${userId}:`, error);
@@ -177,14 +178,57 @@ export async function manualResetAllRoutines(): Promise<number> {
     const querySnapshot = await getDocs(completionsRef);
     
     const deletePromises: Promise<void>[] = [];
+    const userIds = new Set<string>();
     
+    // Collect all user IDs from completions
     querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.userId) {
+        userIds.add(data.userId);
+      }
       deletePromises.push(deleteDoc(docSnap.ref));
     });
     
     await Promise.all(deletePromises);
     
-    console.log(`✅ Manually reset ${deletePromises.length} routine completions`);
+    // Reset tasks for all users
+    let totalTasksReset = 0;
+    for (const userId of userIds) {
+      try {
+        const routines = await getUserRoutines(userId);
+        const allRoutineTaskIds = new Set<string>();
+        
+        routines.forEach((routine) => {
+          routine.taskIds.forEach((taskId) => {
+            allRoutineTaskIds.add(taskId);
+          });
+        });
+        
+        if (allRoutineTaskIds.size > 0) {
+          const tasksRef = collection(db, 'tasks');
+          const tasksQuery = query(tasksRef, where('userId', '==', userId));
+          const tasksSnapshot = await getDocs(tasksQuery);
+          
+          const taskUpdatePromises: Promise<void>[] = [];
+          tasksSnapshot.forEach((docSnap) => {
+            const taskId = docSnap.id;
+            if (allRoutineTaskIds.has(taskId)) {
+              const taskRef = doc(db, 'tasks', taskId);
+              taskUpdatePromises.push(
+                setDoc(taskRef, { completed: false }, { merge: true })
+              );
+            }
+          });
+          
+          await Promise.all(taskUpdatePromises);
+          totalTasksReset += taskUpdatePromises.length;
+        }
+      } catch (error) {
+        console.error(`Error resetting tasks for user ${userId}:`, error);
+      }
+    }
+    
+    console.log(`✅ Manually reset ${deletePromises.length} routine completions and ${totalTasksReset} tasks`);
     return deletePromises.length;
   } catch (error) {
     console.error('❌ Error in manual reset:', error);
