@@ -327,6 +327,18 @@ export default function RoutinesPage() {
                 <span className="sm:hidden">{resetTime}</span>
               </Button>
               <Button
+                onClick={handleManualReset}
+                variant="outline"
+                size="sm"
+                disabled={loading}
+                className="border-gray-600 hover:bg-gray-800 text-xs sm:text-sm h-9 sm:h-10"
+                title="Reset all routines and uncheck all routine tasks"
+              >
+                <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                <span className="hidden sm:inline">Reset All</span>
+                <span className="sm:hidden">Reset</span>
+              </Button>
+              <Button
                 onClick={handleCreateRoutine}
                 size="sm"
                 className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-sm sm:text-base h-9 sm:h-10"
