@@ -5,7 +5,6 @@ import {
   getRoutineStats,
 } from '@/lib/routine-scheduler';
 import { getDb } from '@/lib/firebase-admin';
-import { getUserRoutines } from '@/lib/firebase-routines';
 import admin from 'firebase-admin';
 
 /**
@@ -27,14 +26,24 @@ async function resetUserRoutinesWithAdmin(adminDb: any, userId: string): Promise
     
     await Promise.all(deletePromises);
     
-    // 2. Get all routines for this user and collect all task IDs
-    const routines = await getUserRoutines(userId);
-    const allRoutineTaskIds = new Set<string>();
+    // 2. Get all routines for this user using Admin SDK and collect all task IDs
+    const routinesSnapshot = await adminDb.collection('routines')
+      .where('userId', '==', userId)
+      .get();
     
-    routines.forEach((routine) => {
-      routine.taskIds.forEach((taskId) => {
-        allRoutineTaskIds.add(taskId);
-      });
+    const allRoutineTaskIds = new Set<string>();
+    const routines: any[] = [];
+    
+    routinesSnapshot.forEach((docSnap: any) => {
+      const routine = { id: docSnap.id, ...docSnap.data() };
+      routines.push(routine);
+      
+      // Collect all task IDs from this routine
+      if (routine.taskIds && Array.isArray(routine.taskIds)) {
+        routine.taskIds.forEach((taskId: string) => {
+          allRoutineTaskIds.add(taskId);
+        });
+      }
     });
     
     // 3. Uncheck ALL tasks that are part of routines (set completed = false and clear completedAt)
