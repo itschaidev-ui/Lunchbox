@@ -309,35 +309,83 @@ export async function checkAndUnlockAchievements(userId: string): Promise<{
     }
 
     const achievementsRef = doc(db, 'user_achievements', userId);
-    // Use setDoc with merge to ensure document exists and data is merged properly
-    await setDoc(achievementsRef, updatedAchievements, { merge: true });
-
-    // If all achievements just completed, award 500 credits
-    if (allCompleted && !wasAllCompleted) {
-      try {
-        const currentCredits = credits?.totalCredits || 0;
-        const newTotal = currentCredits + 500;
+    
+    // Use a transaction to atomically check and update achievements
+    // This prevents duplicate credit awards if checkAndUnlockAchievements is called multiple times
+    const { runTransaction } = await import('firebase/firestore');
+    
+    try {
+      await runTransaction(db, async (transaction) => {
+        // Re-read the document in the transaction to get the latest state
+        const currentSnap = await transaction.get(achievementsRef);
+        const currentData = currentSnap.exists() ? currentSnap.data() : null;
         
-        await updateCredits(
-          userId,
-          newTotal,
-          credits?.dailyStreak || 0,
-          credits?.bonusMultiplier || 1.0
-        );
+        // Check if all achievements were already completed (atomic check)
+        const alreadyCompleted = currentData?.allAchievementsCompleted === true;
+        
+        // Only award credits if this is the first time completing all achievements
+        if (allCompleted && !wasAllCompleted && !alreadyCompleted) {
+          // Mark as completed in the transaction
+          const transactionData = {
+            ...updatedAchievements,
+            allAchievementsCompletedAt: new Date().toISOString(),
+          };
+          
+          if (currentSnap.exists()) {
+            transaction.update(achievementsRef, transactionData);
+          } else {
+            transaction.set(achievementsRef, transactionData);
+          }
+        } else {
+          // Just update achievements without awarding credits
+          if (currentSnap.exists()) {
+            transaction.update(achievementsRef, updatedAchievements);
+          } else {
+            transaction.set(achievementsRef, updatedAchievements);
+          }
+        }
+      });
+      
+      // Award credits OUTSIDE the transaction (after atomic check)
+      // This ensures we only award once even if called multiple times
+      if (allCompleted && !wasAllCompleted) {
+        // Double-check one more time before awarding (extra safety)
+        const finalCheck = await getUserAchievements(userId);
+        const alreadyAwarded = finalCheck?.allAchievementsCompletedAt !== undefined;
+        
+        if (!alreadyAwarded) {
+          try {
+            const currentCredits = credits?.totalCredits || 0;
+            const newTotal = currentCredits + 500;
+            
+            await updateCredits(
+              userId,
+              newTotal,
+              credits?.dailyStreak || 0,
+              credits?.bonusMultiplier || 1.0
+            );
 
-        await logCreditTransaction(
-          userId,
-          500,
-          'bonus',
-          'Completed all achievements!',
-          undefined,
-          undefined
-        );
+            await logCreditTransaction(
+              userId,
+              500,
+              'bonus',
+              'Completed all achievements!',
+              undefined,
+              undefined
+            );
 
-        console.log(`🎉 User ${userId} completed all achievements and earned 500 credits!`);
-      } catch (error) {
-        console.error('Error awarding credits for all achievements:', error);
+            console.log(`🎉 User ${userId} completed all achievements and earned 500 credits!`);
+          } catch (error) {
+            console.error('Error awarding credits for all achievements:', error);
+          }
+        } else {
+          console.log(`⚠️ All achievements already completed for user ${userId}, skipping credit award`);
+        }
       }
+    } catch (transactionError) {
+      // Fallback to non-transactional update if transaction fails
+      console.warn('Transaction failed, using fallback update:', transactionError);
+      await setDoc(achievementsRef, updatedAchievements, { merge: true });
     }
 
     return {
