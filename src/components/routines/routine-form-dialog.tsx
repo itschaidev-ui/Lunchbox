@@ -110,7 +110,7 @@ export function RoutineFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl w-full bg-gray-900 border-gray-700 max-h-[90vh] flex flex-col p-0">
+      <DialogContent className="max-w-xl w-full bg-gray-900 border-gray-700 max-h-[90vh] flex flex-col p-0 sm:max-w-2xl">
         <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
           <DialogTitle className="text-2xl">
             {routine ? 'Edit Routine' : 'Create New Routine'}
