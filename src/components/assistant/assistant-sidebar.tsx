@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { X, Bot, User, Loader2, MessageSquare, Save, Trash2, Download, MoreVertical, ChevronUp, ChevronDown, CheckSquare, Clock, Star, Image as ImageIcon } from 'lucide-react';
 import { PromptForm } from '@/components/assistant/prompt-form';
@@ -749,6 +749,9 @@ export function AssistantSidebar({ isOpen, onClose, initialMessages = [], select
                       </div>
                       {message.role === 'user' && (
                         <Avatar className="w-8 h-8 shrink-0">
+                          {user?.photoURL && (
+                            <AvatarImage src={user.photoURL} alt={user.displayName || user.email || 'User'} />
+                          )}
                           <AvatarFallback className="bg-gradient-to-r from-green-500 to-teal-600 text-white text-xs font-semibold">
                             {user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
                           </AvatarFallback>

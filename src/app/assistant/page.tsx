@@ -29,7 +29,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PromptForm } from '@/components/assistant/prompt-form';
 import { FileUpload } from '@/components/assistant/file-upload';
 import { SkeletonMessage } from '@/components/ui/skeleton';
@@ -1923,6 +1923,9 @@ export default function AssistantPage() {
 
                            {message.role === 'user' && (
                 <Avatar className="h-8 w-8 md:h-10 md:w-10 shrink-0">
+                  {user?.photoURL && (
+                    <AvatarImage src={user.photoURL} alt={user.displayName || user.email || 'User'} />
+                  )}
                   <AvatarFallback className="bg-gradient-to-r from-green-500 to-teal-600 text-white text-xs md:text-sm font-semibold">
                     {user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
                   </AvatarFallback>
