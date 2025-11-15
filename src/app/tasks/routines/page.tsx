@@ -43,6 +43,7 @@ import {
   markRoutineCompleted,
   getTodayCompletedRoutines,
 } from '@/lib/firebase-routine-completions';
+import { getRoutineSettings } from '@/lib/firebase-routine-settings';
 
 export default function RoutinesPage() {
   const { user } = useAuth();
@@ -55,13 +56,25 @@ export default function RoutinesPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [completedRoutineIds, setCompletedRoutineIds] = useState<Set<string>>(new Set());
+  const [resetTime, setResetTime] = useState<string>('00:00');
 
   useEffect(() => {
     if (user?.uid) {
       loadRoutines();
       loadCompletedRoutines();
+      loadResetTime();
     }
   }, [user?.uid]);
+
+  const loadResetTime = async () => {
+    if (!user?.uid) return;
+    try {
+      const settings = await getRoutineSettings(user.uid);
+      setResetTime(settings.resetTime || '00:00');
+    } catch (error) {
+      console.error('Error loading reset time:', error);
+    }
+  };
 
   const loadCompletedRoutines = async () => {
     if (!user?.uid) return;
@@ -282,7 +295,17 @@ export default function RoutinesPage() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+              <Button
+                onClick={() => setIsSettingsOpen(true)}
+                variant="outline"
+                size="sm"
+                className="border-gray-600 hover:bg-gray-800 text-xs sm:text-sm h-9 sm:h-10"
+              >
+                <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                <span className="hidden sm:inline">Reset: {resetTime}</span>
+                <span className="sm:hidden">{resetTime}</span>
+              </Button>
               <Button
                 onClick={handleCreateRoutine}
                 size="sm"
@@ -495,7 +518,10 @@ export default function RoutinesPage() {
       {/* Routine Settings Dialog */}
       <RoutineSettingsDialog
         open={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          loadResetTime(); // Reload reset time after closing
+        }}
       />
     </div>
   );
