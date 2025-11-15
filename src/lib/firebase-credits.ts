@@ -122,15 +122,24 @@ export async function logCreditTransaction(
   routineId?: string
 ): Promise<string> {
   try {
-    const transaction: Omit<CreditTransaction, 'id'> = {
+    // Only include optional fields if they are defined (Firestore doesn't allow undefined)
+    const transaction: any = {
       userId,
       amount,
       type,
       reason,
-      taskId,
-      routineId,
       timestamp: new Date().toISOString(),
     };
+
+    // Only add taskId if it's defined
+    if (taskId) {
+      transaction.taskId = taskId;
+    }
+
+    // Only add routineId if it's defined
+    if (routineId) {
+      transaction.routineId = routineId;
+    }
 
     const transactionsRef = collection(db, 'credit_transactions');
     const docRef = await addDoc(transactionsRef, transaction);

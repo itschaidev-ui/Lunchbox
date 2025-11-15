@@ -77,15 +77,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Log transaction
-    await adminDb.collection('credit_transactions').add({
+    // Log transaction (only include taskId if it's defined)
+    const transactionData: any = {
       userId,
       amount,
       type: 'earn',
       reason: 'task_completion',
-      taskId,
       timestamp: now,
-    });
+    };
+    if (taskId) {
+      transactionData.taskId = taskId;
+    }
+    await adminDb.collection('credit_transactions').add(transactionData);
 
     // Mark task as awarded
     await taskRef.update({

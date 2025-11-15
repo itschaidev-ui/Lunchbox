@@ -239,8 +239,29 @@ export default function RoutinesPage() {
         const credits = calculateFullRoutineBonus(routineTasks.length);
         await earnCredits(credits, `Completed routine: ${routine.name}`, 'bonus', undefined, routine.id);
         
-        // Mark as completed in Firebase (prevents exploit)
-        await markRoutineCompleted(user.uid, routine.id, credits);
+        // Mark as completed in Firebase (prevents exploit) - use API route for proper permissions
+        try {
+          const response = await fetch('/api/routines/complete', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: user.uid,
+              routineId: routine.id,
+              creditsAwarded: credits,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            console.error('Failed to mark routine completed:', errorData);
+            // Continue anyway - credits were already awarded
+          }
+        } catch (error) {
+          console.error('Error calling routine complete API:', error);
+          // Continue anyway - credits were already awarded
+        }
         
         // Update local state
         setCompletedRoutineIds(prev => new Set(prev).add(routine.id));
