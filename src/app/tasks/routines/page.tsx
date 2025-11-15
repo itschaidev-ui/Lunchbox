@@ -258,36 +258,37 @@ export default function RoutinesPage() {
       <Header />
       
       <div className="flex-1 overflow-hidden">
-        <div className="h-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col">
+        <div className="h-full max-w-6xl mx-auto p-3 sm:p-4 md:p-6 flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => router.push('/tasks')}
-                className="h-10 w-10"
+                className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0"
               >
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
-              <div>
-                <h1 className="text-3xl font-bold font-headline flex items-center gap-2">
-                  <Repeat className="h-8 w-8 text-blue-400" />
-                  <span className="bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold font-headline flex items-center gap-1.5 sm:gap-2">
+                  <Repeat className="h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 text-blue-400 flex-shrink-0" />
+                  <span className="bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent truncate">
                     Daily Routines
                   </span>
                 </h1>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 line-clamp-1">
                   Build habits with recurring tasks that reset daily
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <Button
                 onClick={handleCreateRoutine}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                size="sm"
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-sm sm:text-base h-9 sm:h-10"
               >
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                 <span className="hidden sm:inline">New Routine</span>
                 <span className="sm:hidden">New</span>
               </Button>
