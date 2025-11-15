@@ -110,14 +110,14 @@ export function RoutineFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-[calc(100%-2rem)] max-w-lg bg-gray-900 border-gray-700 max-h-[90vh] flex flex-col p-0 sm:max-w-xl md:max-w-2xl">
-        <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
-          <DialogTitle className="text-2xl">
+      <DialogContent className="w-[95vw] max-w-lg bg-gray-900 border-gray-700 max-h-[90vh] flex flex-col p-0 sm:w-[90vw] sm:max-w-xl md:max-w-2xl">
+        <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 flex-shrink-0">
+          <DialogTitle className="text-xl sm:text-2xl">
             {routine ? 'Edit Routine' : 'Create New Routine'}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 px-6 pb-6">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 px-4 sm:px-6 pb-4 sm:pb-6">
           <div className="flex-1 overflow-y-auto space-y-6 pr-2 -mr-2">
           {/* Routine Name */}
           <div className="space-y-2">
@@ -248,20 +248,20 @@ export function RoutineFormDialog({
           </div>
 
           {/* Actions - Sticky at bottom */}
-          <div className="flex items-center justify-end gap-3 pt-4 mt-4 border-t border-gray-700 flex-shrink-0 bg-gray-900 -mx-6 px-6">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-gray-700 flex-shrink-0 bg-gray-900 -mx-4 sm:-mx-6 px-4 sm:px-6">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
               disabled={loading}
-              className="border-gray-600 hover:bg-gray-800"
+              className="border-gray-600 hover:bg-gray-800 text-sm sm:text-base px-3 sm:px-4"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={loading || !name.trim() || selectedTaskIds.length === 0}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base px-3 sm:px-4"
             >
               {loading ? 'Saving...' : routine ? 'Update Routine' : 'Create Routine'}
             </Button>
