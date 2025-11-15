@@ -150,7 +150,13 @@ export default function AssistantPage() {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         setRetryCount(attempt - 1);
-        return await apiCall();
+        // Add timeout wrapper for server actions (60 seconds default, but we'll catch it)
+        return await Promise.race([
+          apiCall(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Request timeout - operation took too long')), 120000) // 2 minutes
+          )
+        ]);
       } catch (error: any) {
         console.log(`API attempt ${attempt} failed:`, error.message);
         
@@ -158,6 +164,14 @@ export default function AssistantPage() {
         // The caller will handle the queue/retry logic
         if (error?.rateLimitInfo) {
           throw error;
+        }
+        
+        // Don't retry on timeout or connection errors - these are usually infrastructure issues
+        if (error.message?.includes('timeout') || 
+            error.message?.includes('408') ||
+            error.message?.includes('Failed to fetch') ||
+            error.message?.includes('ERR_CONNECTION_REFUSED')) {
+          throw error; // Don't retry these
         }
         
         // Check if it's a retryable error
@@ -1402,6 +1416,10 @@ export default function AssistantPage() {
         errorText = 'The AI service is currently overloaded. Please wait a moment and try again.';
       } else if (error.message?.includes('UNAVAILABLE')) {
         errorText = 'The AI service is temporarily unavailable. Please try again in a few minutes.';
+      } else if (error.message?.includes('408') || error.message?.includes('timeout') || error.message?.includes('Request Timeout') || error.message?.includes('Request timeout')) {
+        errorText = '⏱️ Request Timeout\n\nThe request took too long to process. This can happen when:\n• Analyzing large images\n• Processing complex requests\n\nPlease try:\n• Using smaller images\n• Breaking up your request into smaller parts\n• Waiting a moment and trying again';
+      } else if (error.message?.includes('Failed to fetch') || error.message?.includes('ERR_CONNECTION_REFUSED')) {
+        errorText = '🔌 Connection Error\n\nUnable to connect to the server. Please check:\n• Your internet connection\n• If the development server is running\n• Try refreshing the page';
       }
       
       const errorMessage: Message = {

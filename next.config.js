@@ -9,6 +9,13 @@ const nextConfig = {
   },
   serverActions: {
     bodySizeLimit: '10mb', // Increase body size limit for server actions
+    allowedOrigins: ['localhost:3000', 'localhost:9002'], // Allow dev server origins
+  },
+  // Increase timeout for long-running operations (image analysis, AI calls)
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
   images: {
     remotePatterns: [
