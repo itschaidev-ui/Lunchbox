@@ -471,11 +471,12 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                 <div className="flex flex-col gap-3">
                   <FormLabel className="text-sm font-medium">Available Days</FormLabel>
                   <div className="flex gap-1.5 sm:gap-2">
-                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => {
-                      const dayNumber = index === 0 ? 0 : index === 6 ? 6 : index; // Sunday=0, Monday=1, etc.
-                      const isSelected = selectedDays.includes(dayNumber);
+                    {(() => {
                       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                      return (
+                      return ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => {
+                        const dayNumber = index === 0 ? 0 : index === 6 ? 6 : index; // Sunday=0, Monday=1, etc.
+                        const isSelected = selectedDays.includes(dayNumber);
+                        return (
                         <Button
                           key={index}
                           type="button"
@@ -499,14 +500,15 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                         >
                           {day}
                         </Button>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </div>
                   {selectedDays.length > 0 && (
                     <div className="flex items-center gap-2 px-2 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg">
                       <div className="h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
                       <p className="text-xs sm:text-sm text-purple-300 font-medium">
-                        Available on: <span className="text-purple-200">{selectedDays.map(d => dayNames[d]).join(', ')}</span>
+                        Available on: <span className="text-purple-200">{selectedDays.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}</span>
                       </p>
                     </div>
                   )}
