@@ -115,7 +115,7 @@ Open the downloaded JSON file and copy these values:
 ```env
 # Discord Bot Configuration
 DISCORD_BOT_TOKEN=your_bot_token_here
-DISCORD_CLIENT_ID=1234567890123456789
+DISCORD_CLIENT_ID=your_client_id_here
 DISCORD_CLIENT_SECRET=your_client_secret_here
 DISCORD_GUILD_ID=9876543210987654321
 ADMIN_CHANNEL_ID=1111222233334444555

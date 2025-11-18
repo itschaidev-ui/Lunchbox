@@ -52,7 +52,7 @@ class MultiProviderAI {
         baseUrl: 'https://api.deepseek.com/v1',
         model: 'deepseek-chat',
         priority: 1,
-        enabled: true
+        enabled: !!process.env.DEEPSEEK_API_KEY
       },
       {
         name: 'groq',
@@ -60,7 +60,7 @@ class MultiProviderAI {
         baseUrl: 'https://api.groq.com/openai/v1',
         model: 'openai/gpt-oss-safeguard-20b',
         priority: 2,
-        enabled: true
+        enabled: !!process.env.GROQ_API_KEY
       },
       {
         name: 'gemini',
