@@ -2,6 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mobile optimizations */
+@layer base {
+  /* Prevent zoom on input focus on iOS */
+  input, textarea, select {
+    font-size: 16px;
+  }
+  
+  /* Better touch targets */
+  button, [role="button"], input[type="submit"], input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Smooth scrolling for mobile */
+  html {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  
+  /* Prevent text selection on touch */
+  .touch-manipulation {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  
+  /* Safe area support for mobile */
+  .mobile-safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .mobile-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Better mobile keyboard handling */
+  @media screen and (max-width: 768px) {
+    .mobile-keyboard-adjust {
+      height: 100vh;
+      height: 100dvh; /* Dynamic viewport height */
+    }
+  }
+}
+
 /* Outstanding Plan Mode Animations */
 @keyframes fade-in-up {
   from {

@@ -1067,7 +1067,19 @@ export default function AssistantPage() {
         });
       }
 
-      setSelectedImages(prev => [...prev, ...newImages]);
+      const updatedImages = [...selectedImages, ...newImages];
+      setSelectedImages(updatedImages);
+      
+      // Auto-select vision model if not already using one
+      const visionModels = ['llama-4-scout', 'llama-4-maverick', 'llama-3.2-90b-vision', 'gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet', 'claude-3-opus', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+      if (!visionModels.includes(selectedModel)) {
+        setSelectedModel('llama-4-scout'); // Use Groq Llama 4 Scout for vision (fast and supports images)
+        toast({
+          title: "Vision model selected",
+          description: "Switched to Llama 4 Scout for image analysis.",
+        });
+      }
+      
       toast({
         title: "Images attached",
         description: `Successfully attached ${newImages.length} image${newImages.length > 1 ? 's' : ''}.`,
@@ -1083,7 +1095,17 @@ export default function AssistantPage() {
   };
 
   const handleImageRemove = (imageId: string) => {
-    setSelectedImages(prev => prev.filter(img => img.id !== imageId));
+    const updatedImages = selectedImages.filter(img => img.id !== imageId);
+    setSelectedImages(updatedImages);
+    
+    // If all images removed and using a vision model, switch back to auto
+    if (updatedImages.length === 0) {
+      const visionModels = ['llama-4-scout', 'llama-4-maverick', 'gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet', 'claude-3-opus', 'gemini-1.5-flash'];
+      if (visionModels.includes(selectedModel)) {
+        setSelectedModel('auto');
+      }
+    }
+    
     toast({
       title: "Image removed",
       description: "The image has been removed.",
@@ -1361,8 +1383,32 @@ export default function AssistantPage() {
       }
 
       // Stream the assistant's response
-      const responseText = response[0].text || 'I understand.';
+      let responseText = response[0].text || 'I understand.';
       const tokenUsage = response[0]?.tokenUsage;
+      
+      // DEBUG: Log the raw response to see if spaces are already there
+      console.log('🔍 Raw AI response text:', JSON.stringify(responseText));
+      console.log('🔍 Response length:', responseText.length);
+      console.log('🔍 First 100 chars:', responseText.substring(0, 100));
+      
+      // Fix character-level spacing issues (spaces inserted between every character)
+      // Check if text has abnormal spacing pattern (more than 30% spaces)
+      const spaceCount = (responseText.match(/ /g) || []).length;
+      const spaceRatio = spaceCount / responseText.length;
+      
+      if (spaceRatio > 0.3) {
+        console.log('🚨 Detected abnormal spacing pattern, attempting to fix...');
+        // Try to reconstruct by removing excessive spaces
+        const words = responseText.split(/\s+/).filter((word: string) => word.length > 0);
+        const reconstructed = words.join(' ');
+        
+        // Only use reconstructed if it makes sense (has reasonable word lengths)
+        const avgWordLength = reconstructed.split(' ').reduce((sum: number, word: string) => sum + word.length, 0) / words.length;
+        if (avgWordLength > 2) {
+          console.log('✅ Fixed spacing pattern');
+          responseText = reconstructed;
+        }
+      }
       
       // Store token usage with the message
       const lastMessage = messages[messages.length - 1];
@@ -1473,7 +1519,9 @@ export default function AssistantPage() {
                 ],
                 throwOnError: false,
                 strict: false,
-                ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+                errorColor: '#cc0000',
+                ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+                ignoredClasses: ['no-math']
               });
             } catch (e) {
               console.error('Error in auto-render:', e);
@@ -1487,55 +1535,76 @@ export default function AssistantPage() {
             const html = messageRef.current!.innerHTML;
             let newHtml = html;
             
-            // Render block LaTeX \[ ... \] - handle multiline
+            // Clean LaTeX: decode HTML entities only
+            const cleanLatex = (latex: string) => {
+              return latex
+                .replace(/&#x27;/g, "'")
+                .replace(/&#39;/g, "'")
+                .replace(/&quot;/g, '"')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .trim();
+            };
+            
+            // Process block LaTeX first (\[ ... \] and $$ ... $$)
             newHtml = newHtml.replace(/\\\[([\s\S]*?)\\\]/g, (match, latex) => {
               try {
-                const rendered = katex.renderToString(latex.trim(), {
+                const cleaned = cleanLatex(latex);
+                if (!cleaned) return match;
+                return katex.renderToString(cleaned, {
                   throwOnError: false,
-                  displayMode: true
+                  displayMode: true,
+                  strict: false
                 });
-                return `<div class="my-4 overflow-x-auto">${rendered}</div>`;
               } catch (e) {
-                console.error('Error rendering block LaTeX:', e, latex);
-                return match;
+                return `<div class="my-4 p-2 bg-gray-800/50 rounded border border-gray-700"><code class="text-sm">${latex}</code></div>`;
               }
             });
             
-            // Render inline LaTeX \( ... \)
-            newHtml = newHtml.replace(/\\\(([\s\S]*?)\\\)/g, (match, latex) => {
-              try {
-                return katex.renderToString(latex.trim(), {
-                  throwOnError: false,
-                  displayMode: false
-                });
-              } catch (e) {
-                console.error('Error rendering inline LaTeX:', e, latex);
-                return match;
-              }
-            });
-            
-            // Render block LaTeX $$ ... $$
             newHtml = newHtml.replace(/\$\$([\s\S]*?)\$\$/g, (match, latex) => {
               try {
-                const rendered = katex.renderToString(latex.trim(), {
+                const cleaned = cleanLatex(latex);
+                if (!cleaned) return match;
+                return katex.renderToString(cleaned, {
                   throwOnError: false,
-                  displayMode: true
+                  displayMode: true,
+                  strict: false
                 });
-                return `<div class="my-4 overflow-x-auto">${rendered}</div>`;
               } catch (e) {
-                return match;
+                return `<div class="my-4 p-2 bg-gray-800/50 rounded border border-gray-700"><code class="text-sm">${latex}</code></div>`;
               }
             });
             
-            // Render inline LaTeX $ ... $ (but not $$)
-            newHtml = newHtml.replace(/(?<!\$)\$(?!\$)([^\$]+?)\$(?!\$)/g, (match, latex) => {
+            // Process inline LaTeX last
+            newHtml = newHtml.replace(/\\\(([\s\S]*?)\\\)/g, (match, latex) => {
               try {
-                return katex.renderToString(latex.trim(), {
+                const cleaned = cleanLatex(latex);
+                if (!cleaned) return match;
+                return katex.renderToString(cleaned, {
                   throwOnError: false,
-                  displayMode: false
+                  displayMode: false,
+                  strict: false
                 });
               } catch (e) {
-                return match;
+                return `<code class="bg-gray-800/50 px-1 rounded">${latex}</code>`;
+              }
+            });
+            
+            // Inline $ ... $ - match until closing $ (not $$), then escape internal $
+            newHtml = newHtml.replace(/(?<!\$)\$((?:[^$]|\\\$)+?)\$(?!\$)/g, (match, latex) => {
+              try {
+                // Escape any unescaped dollar signs (for literal $ in math)
+                const escaped = latex.replace(/(?<!\\)\$/g, '\\$');
+                const cleaned = cleanLatex(escaped);
+                if (!cleaned) return match;
+                return katex.renderToString(cleaned, {
+                  throwOnError: false,
+                  displayMode: false,
+                  strict: false
+                });
+              } catch (e) {
+                return `<code class="bg-gray-800/50 px-1 rounded">${latex}</code>`;
               }
             });
             
@@ -1641,20 +1710,20 @@ export default function AssistantPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
               className={cn(
-                "flex gap-3 md:gap-4",
+                "flex gap-2 sm:gap-3 md:gap-4",
                 message.role === 'user' ? 'justify-end' : 'justify-start'
               )}
             >
                            {message.role === 'assistant' && (
-                <Avatar className="h-8 w-8 md:h-10 md:w-10 shrink-0">
+                <Avatar className="h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10 shrink-0">
                   <AvatarFallback className="bg-primary text-primary-foreground">
-                    <Bot className="h-4 w-4 md:h-5 md:w-5" />
+                    <Bot className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5" />
                                    </AvatarFallback>
                                </Avatar>
                            )}
               
               <div className={cn(
-                "max-w-[85%] md:max-w-[70%] px-4 py-3 border rounded-lg",
+                "max-w-[90%] sm:max-w-[85%] md:max-w-[70%] px-3 sm:px-4 py-2 sm:py-3 border rounded-lg",
                 message.role === 'user' 
                   ? "text-foreground border-border/50" 
                   : "text-foreground border-border/50"
@@ -1664,29 +1733,29 @@ export default function AssistantPage() {
                   <div className="mb-3 pb-3 border-b border-border/50">
                                 {isThinking ? (
                       <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                          <div className="flex space-x-0.5 sm:space-x-1">
+                            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                           </div>
                           <span className="text-xs text-muted-foreground">Thinking...</span>
                         </div>
                         {reasoningSteps.length > 0 && (
-                          <div className="space-y-1.5 pl-1">
+                          <div className="space-y-1 sm:space-y-1.5 pl-0.5 sm:pl-1">
                             {reasoningSteps.map((step) => (
-                              <div key={step.id} className="flex items-center gap-2 text-xs">
+                              <div key={step.id} className="flex items-center gap-1.5 sm:gap-2 text-xs">
                                 {step.status === 'thinking' && step.id === currentReasoningStep ? (
-                                  <Loader2 className="h-3 w-3 animate-spin text-blue-500 flex-shrink-0" />
+                                  <Loader2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 animate-spin text-blue-500 flex-shrink-0" />
                                 ) : step.status === 'completed' ? (
-                                  <div className="h-3 w-3 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                                    <span className="text-white text-[8px]">✓</span>
+                                  <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                                    <span className="text-white text-[7px] sm:text-[8px]">✓</span>
                                     </div>
                                 ) : (
-                                  <div className="h-3 w-3 rounded-full bg-gray-600 flex-shrink-0" />
+                                  <div className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full bg-gray-600 flex-shrink-0" />
                                 )}
                                 <span className={cn(
-                                  "text-xs",
+                                  "text-xs leading-tight",
                                   step.id === currentReasoningStep ? "text-foreground font-medium" : "text-muted-foreground"
                                 )}>
                                   {step.title}
@@ -1729,204 +1798,251 @@ export default function AssistantPage() {
                     )}
                   </div>
                 )}
-                <div className="whitespace-pre-wrap text-sm md:text-base leading-relaxed">
+                <div className="whitespace-pre-wrap text-xs sm:text-sm md:text-base leading-relaxed">
                   {Array.isArray(message.content) 
-                    ? message.content.map((content: any, contentIndex: number) => {
-                        const messageIndex = messages.findIndex(m => m === message);
+                    ? (() => {
+                        // Combine consecutive text items to avoid spacing issues
+                        const processedContent: JSX.Element[] = [];
+                        let textBuffer: string[] = [];
                         
-                        // Handle image content
-                        if (content.image) {
-                          return (
-                            <motion.div
-                              key={contentIndex}
-                              initial={{ opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ duration: 0.3 }}
-                              className="my-2"
-                            >
-                              <div className="relative group">
-                                <motion.img
-                                  src={content.image}
-                                  alt={content.fileName || 'Uploaded image'}
-                                  className="rounded-lg max-w-full h-auto cursor-pointer border border-gray-700 hover:border-blue-500/50 transition-all"
-                                  style={{ maxHeight: '400px' }}
-                                  whileHover={{ scale: 1.02 }}
-                                  transition={{ duration: 0.2 }}
-                                  onClick={() => {
-                                    // Open image in full size - use safer method for mobile PWA
-                                    try {
-                                      // Try opening in new tab first (works better on mobile)
-                                      const link = document.createElement('a');
-                                      link.href = content.image;
-                                      link.target = '_blank';
-                                      link.rel = 'noopener noreferrer';
-                                      
-                                      // For mobile PWA, use a modal instead of window.open
-                                      if (window.matchMedia('(display-mode: standalone)').matches || 
-                                          (window.navigator as any).standalone) {
-                                        // PWA mode - use modal/image viewer
-                                        const modal = document.createElement('div');
-                                        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-                                        modal.onclick = () => modal.remove();
+                        message.content.forEach((content: any, contentIndex: number) => {
+                          const messageIndex = messages.findIndex(m => m === message);
+                          
+                          // Handle image content
+                          if (content.image) {
+                            // Flush any buffered text first
+                            if (textBuffer.length > 0) {
+                              processedContent.push(
+                                <span key={`text-${contentIndex}`}>
+                                  {formatMessage(textBuffer.join(''))}
+                                </span>
+                              );
+                              textBuffer = [];
+                            }
+                            
+                            processedContent.push(
+                              <motion.div
+                                key={contentIndex}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ duration: 0.3 }}
+                                  className="my-1.5 sm:my-2"
+                              >
+                                <div className="relative group">
+                                  <motion.img
+                                    src={content.image}
+                                    alt={content.fileName || 'Uploaded image'}
+                                    className="rounded-lg max-w-full h-auto cursor-pointer border border-gray-700 hover:border-blue-500/50 transition-all touch-manipulation"
+                                    style={{ maxHeight: '300px' }}
+                                    onTouchStart={() => {}} // Enable touch feedback
+                                    whileHover={{ scale: 1.02 }}
+                                    transition={{ duration: 0.2 }}
+                                    onClick={() => {
+                                      try {
+                                        const link = document.createElement('a');
+                                        link.href = content.image;
+                                        link.target = '_blank';
+                                        link.rel = 'noopener noreferrer';
                                         
-                                        const img = document.createElement('img');
-                                        img.src = content.image;
-                                        img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
-                                        img.onclick = (e) => e.stopPropagation();
-                                        
-                                        modal.appendChild(img);
-                                        document.body.appendChild(modal);
-                                      } else {
-                                        // Regular browser - use link
-                                        link.click();
+                                        if (window.matchMedia('(display-mode: standalone)').matches || 
+                                            (window.navigator as any).standalone) {
+                                          const modal = document.createElement('div');
+                                          modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                                          modal.onclick = () => modal.remove();
+                                          
+                                          const img = document.createElement('img');
+                                          img.src = content.image;
+                                          img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+                                          img.onclick = (e) => e.stopPropagation();
+                                          
+                                          modal.appendChild(img);
+                                          document.body.appendChild(modal);
+                                        } else {
+                                          link.click();
+                                        }
+                                      } catch (error) {
+                                        console.error('Error opening image:', error);
+                                        window.open(content.image, '_blank', 'noopener,noreferrer');
                                       }
-                                    } catch (error) {
-                                      console.error('Error opening image:', error);
-                                      // Fallback: just open the URL
-                                      window.open(content.image, '_blank', 'noopener,noreferrer');
-                                    }
-                                  }}
-                                />
-                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <div className="bg-black/70 backdrop-blur-sm rounded px-2 py-1 text-xs text-white">
-                                    Click to expand
+                                    }}
+                                  />
+                                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="bg-black/70 backdrop-blur-sm rounded px-2 py-1 text-xs text-white">
+                                      Click to expand
+                                    </div>
                                   </div>
+                                  {content.fileName && (
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      {content.fileName}
+                                    </div>
+                                  )}
                                 </div>
-                                {content.fileName && (
-                                  <div className="mt-1 text-xs text-muted-foreground">
-                                    {content.fileName}
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
+                              </motion.div>
+                            );
+                            return;
+                          }
+                          
+                          // Check for saved code content with markers
+                          if (content.text?.startsWith('[CODE_START]') || content.text?.startsWith('[CSS_START]')) {
+                            // Flush any buffered text first
+                            if (textBuffer.length > 0) {
+                              processedContent.push(
+                                <span key={`text-${contentIndex}`}>
+                                  {formatMessage(textBuffer.join(''))}
+                                </span>
+                              );
+                              textBuffer = [];
+                            }
+                            
+                            try {
+                              const cleanText = content.text
+                                .replace(/\[CODE_START\]\n/, '')
+                                .replace(/\[CSS_START\]\n/, '')
+                                .replace(/\n\[CODE_END\]$/, '')
+                                .replace(/\n\[CSS_END\]$/, '');
+                              
+                              let codeData;
+                              try {
+                                codeData = JSON.parse(cleanText);
+                              } catch (parseError) {
+                                const codeMatch = cleanText.match(/"code":\s*"([^"]+)"/);
+                                if (codeMatch) {
+                                  codeData = {
+                                    code: codeMatch[1].replace(/\\n/g, '\n'),
+                                    language: 'css',
+                                    isExecutable: true
+                                  };
+                                } else {
+                                  throw new Error('Could not extract code from content');
+                                }
+                              }
+                              processedContent.push(
+                                <div key={contentIndex} className="mt-4">
+                                  <CodeMode 
+                                    code={codeData.code}
+                                    language={codeData.language}
+                                    isExecutable={codeData.isExecutable}
+                                    onEdit={() => {
+                                      setEditingContent({
+                                        type: 'code',
+                                        content: codeData,
+                                        messageIndex: messageIndex,
+                                        contentIndex: contentIndex
+                                      });
+                                      setEditPrompt('');
+                                    }}
+                                  />
+                                </div>
+                              );
+                            } catch (e) {
+                              console.error('Error parsing code content:', e);
+                              processedContent.push(<div key={contentIndex}>Error loading code content</div>);
+                            }
+                            return;
+                          }
+                          
+                          // Check for saved canvas content with markers
+                          if (content.text?.startsWith('[CANVAS_START]')) {
+                            // Flush any buffered text first
+                            if (textBuffer.length > 0) {
+                              processedContent.push(
+                                <span key={`text-${contentIndex}`}>
+                                  {formatMessage(textBuffer.join(''))}
+                                </span>
+                              );
+                              textBuffer = [];
+                            }
+                            
+                            try {
+                              const canvasData = JSON.parse(content.text.replace(/\[CANVAS_START\]\n/, '').replace(/\n\[CANVAS_END\]$/, ''));
+                              processedContent.push(
+                                <div key={contentIndex} className="mt-4">
+                                  <CanvasMode 
+                                    content={canvasData}
+                                    onEdit={() => {
+                                      setEditingContent({
+                                        type: 'canvas',
+                                        content: canvasData,
+                                        messageIndex: messageIndex,
+                                        contentIndex: contentIndex
+                                      });
+                                      setEditPrompt('');
+                                    }}
+                                  />
+                                </div>
+                              );
+                            } catch (e) {
+                              console.error('Error parsing canvas content:', e);
+                              processedContent.push(<div key={contentIndex}>Error loading canvas content</div>);
+                            }
+                            return;
+                          }
+                          
+                          // Check for saved plan content with markers
+                          if (content.text?.startsWith('[PLAN_START]')) {
+                            // Flush any buffered text first
+                            if (textBuffer.length > 0) {
+                              processedContent.push(
+                                <span key={`text-${contentIndex}`}>
+                                  {formatMessage(textBuffer.join(''))}
+                                </span>
+                              );
+                              textBuffer = [];
+                            }
+                            
+                            try {
+                              const planData = JSON.parse(content.text.replace(/\[PLAN_START\]\n/, '').replace(/\n\[PLAN_END\]$/, ''));
+                              processedContent.push(
+                                <div key={contentIndex} className="mt-4">
+                                  <PlanMode 
+                                    planData={planData}
+                                    onEdit={() => {
+                                      setEditingContent({
+                                        type: 'plan',
+                                        content: planData,
+                                        messageIndex: messageIndex,
+                                        contentIndex: contentIndex
+                                      });
+                                      setEditPrompt('');
+                                    }}
+                                  />
+                                </div>
+                              );
+                            } catch (e) {
+                              console.error('Error parsing plan content:', e);
+                              processedContent.push(<div key={contentIndex}>Error loading plan content</div>);
+                            }
+                            return;
+                          }
+                          
+                          // Regular text content - buffer it
+                          if (content.text) {
+                            textBuffer.push(content.text);
+                          }
+                        });
+                        
+                        // Flush any remaining buffered text
+                        if (textBuffer.length > 0) {
+                          processedContent.push(
+                            <span key="text-final">
+                              {formatMessage(textBuffer.join(''))}
+                            </span>
                           );
                         }
                         
-                        // Check for saved code content with markers
-                        if (content.text?.startsWith('[CODE_START]') || content.text?.startsWith('[CSS_START]')) {
-                          console.log('🔍 Found code markers in content:', content.text.substring(0, 200) + '...');
-                          try {
-                            // Handle both CODE_START and CSS_START markers
-                            const cleanText = content.text
-                              .replace(/\[CODE_START\]\n/, '')
-                              .replace(/\[CSS_START\]\n/, '')
-                              .replace(/\n\[CODE_END\]$/, '')
-                              .replace(/\n\[CSS_END\]$/, '');
-                            
-                            console.log('🧹 Cleaned text:', cleanText.substring(0, 200) + '...');
-                            
-                            let codeData;
-                            try {
-                              codeData = JSON.parse(cleanText);
-                              console.log('✅ Successfully parsed code data:', codeData);
-                            } catch (parseError) {
-                              // Fallback: if JSON parsing fails, try to extract code from simple format
-                              console.log('❌ JSON parse failed, trying fallback extraction:', parseError);
-                              const codeMatch = cleanText.match(/"code":\s*"([^"]+)"/);
-                              if (codeMatch) {
-                                codeData = {
-                                  code: codeMatch[1].replace(/\\n/g, '\n'),
-                                  language: 'css', // Default to CSS if we can't determine
-                                  isExecutable: true
-                                };
-                                console.log('🔄 Fallback extraction successful:', codeData);
-                              } else {
-                                throw new Error('Could not extract code from content');
-                              }
-                            }
-                            return (
-                              <div key={contentIndex} className="mt-4">
-                                <CodeMode 
-                                  code={codeData.code}
-                                  language={codeData.language}
-                                  isExecutable={codeData.isExecutable}
-                                  onEdit={() => {
-                                    setEditingContent({
-                                      type: 'code',
-                                      content: codeData,
-                                      messageIndex: messageIndex,
-                                      contentIndex: contentIndex
-                                    });
-                                    setEditPrompt('');
-                                  }}
-                                />
-                              </div>
-                            );
-                          } catch (e) {
-                            console.error('Error parsing code content:', e);
-                            return <div key={contentIndex}>Error loading code content</div>;
-                          }
-                        }
-                        
-                        // Check for saved canvas content with markers
-                        if (content.text?.startsWith('[CANVAS_START]')) {
-                          try {
-                            const canvasData = JSON.parse(content.text.replace(/\[CANVAS_START\]\n/, '').replace(/\n\[CANVAS_END\]$/, ''));
-                            return (
-                              <div key={contentIndex} className="mt-4">
-                                <CanvasMode 
-                                  content={canvasData}
-                                  onEdit={() => {
-                                    setEditingContent({
-                                      type: 'canvas',
-                                      content: canvasData,
-                                      messageIndex: messageIndex,
-                                      contentIndex: contentIndex
-                                    });
-                                    setEditPrompt('');
-                                  }}
-                                />
-            </div>
-                            );
-                          } catch (e) {
-                            console.error('Error parsing canvas content:', e);
-                            return <div key={contentIndex}>Error loading canvas content</div>;
-                          }
-                        }
-                        
-                        // Check for saved plan content with markers
-                        if (content.text?.startsWith('[PLAN_START]')) {
-                          try {
-                            const planData = JSON.parse(content.text.replace(/\[PLAN_START\]\n/, '').replace(/\n\[PLAN_END\]$/, ''));
-                    return (
-                              <div key={contentIndex} className="mt-4">
-                                <PlanMode 
-                                  planData={planData}
-                                  onEdit={() => {
-                                    setEditingContent({
-                                      type: 'plan',
-                                      content: planData,
-                                      messageIndex: messageIndex,
-                                      contentIndex: contentIndex
-                                    });
-                                    setEditPrompt('');
-                                  }}
-                                />
-            </div>
-                            );
-                          } catch (e) {
-                            console.error('Error parsing plan content:', e);
-                            return <div key={contentIndex}>Error loading plan content</div>;
-                          }
-                        }
-                        
-                    return (
-                          <div key={contentIndex}>
-                            {formatMessage(content.text)}
-                          </div>
-                        );
-                      })
+                        return processedContent;
+                      })()
                     : formatMessage(typeof message.content === 'string' ? message.content : String(message.content))
                   }
                 </div>
               </div>
 
                            {message.role === 'user' && (
-                <Avatar className="h-8 w-8 md:h-10 md:w-10 shrink-0">
+                <Avatar className="h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10 shrink-0">
                   {user?.photoURL && (
                     <AvatarImage src={user.photoURL} alt={user.displayName || user.email || 'User'} />
                   )}
-                  <AvatarFallback className="bg-gradient-to-r from-green-500 to-teal-600 text-white text-xs md:text-sm font-semibold">
+                  <AvatarFallback className="bg-gradient-to-r from-green-500 to-teal-600 text-white text-xs sm:text-xs md:text-sm font-semibold">
                     {user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
@@ -1955,17 +2071,17 @@ export default function AssistantPage() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex gap-3 md:gap-4 justify-start"
+              className="flex gap-2 sm:gap-3 md:gap-4 justify-start"
             >
-              <Avatar className="h-8 w-8 md:h-10 md:w-10 shrink-0">
+              <Avatar className="h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10 shrink-0">
                 <AvatarFallback className="bg-primary text-primary-foreground">
-                  <Bot className="h-4 w-4 md:h-5 md:w-5" />
+                  <Bot className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5" />
                 </AvatarFallback>
               </Avatar>
-              <div className="max-w-[85%] md:max-w-[70%] px-4 py-3 border rounded-lg text-foreground border-border/50">
-                <div className="whitespace-pre-wrap text-sm md:text-base leading-relaxed">
+              <div className="max-w-[90%] sm:max-w-[85%] md:max-w-[70%] px-3 sm:px-4 py-2 sm:py-3 border rounded-lg text-foreground border-border/50">
+                <div className="whitespace-pre-wrap text-xs sm:text-sm md:text-base leading-relaxed">
                   {streamedContent}
-                  <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
+                  <span className="inline-block w-1.5 sm:w-2 h-3 sm:h-4 bg-primary animate-pulse ml-1" />
             </div>
               </div>
             </motion.div>
@@ -2129,8 +2245,8 @@ export default function AssistantPage() {
             </div>
           )}
           
-      <div className="p-4 md:p-6 border-t bg-background/95 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto space-y-4">
+      <div className="p-2 sm:p-4 md:p-6 border-t bg-background/95 backdrop-blur-sm">
+        <div className="max-w-4xl mx-auto space-y-2 sm:space-y-4">
           {/* File Upload Section */}
           {showFileUpload && (
             <div className="mb-4">
@@ -2144,9 +2260,9 @@ export default function AssistantPage() {
           
           {/* Uploaded Files Display */}
           {uploadedFiles.length > 0 && (
-            <div className="mb-4 p-3 bg-muted rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Uploaded Files ({uploadedFiles.length})</span>
+            <div className="mb-2 sm:mb-4 p-2 sm:p-3 bg-muted rounded-lg">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-xs sm:text-sm font-medium">Uploaded Files ({uploadedFiles.length})</span>
                 <Button
                   variant="ghost"
                   size="sm"

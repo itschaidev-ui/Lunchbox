@@ -82,7 +82,7 @@ async function analyzeImage(fileUrl: string, fileName: string, mimeType: string 
       throw new Error('GEMINI_API_KEY not configured');
     }
     
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
     
     // Fetch the image
     console.log(`Fetching image from: ${fileUrl}`);
@@ -208,7 +208,7 @@ async function analyzePDF(fileUrl: string, fileName: string): Promise<DocumentAn
   // like pdf-parse or pdf2pic to extract text first, then analyze with Gemini
   
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
     
     const prompt = `
     I have a PDF file named "${fileName}". Since I can't directly read the PDF content,
@@ -254,7 +254,7 @@ async function analyzeTextFile(fileUrl: string, fileName: string): Promise<Docum
     const response = await fetch(fileUrl);
     const textContent = await response.text();
     
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
     
     const prompt = `
     Analyze this text content and provide:

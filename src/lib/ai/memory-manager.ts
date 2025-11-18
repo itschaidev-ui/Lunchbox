@@ -117,7 +117,7 @@ export async function cleanupOldMemories(): Promise<void> {
  */
 async function generateConversationSummary(messages: Message[]): Promise<ConversationSummary> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
     
     // Prepare conversation text
     const conversationText = messages.map(msg => {
@@ -185,7 +185,7 @@ export async function getRelevantContext(
     const memory = await getConversationContext(userId);
     if (!memory) return '';
     
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
     
     const prompt = `
     Based on this user's conversation history and current message, provide relevant context.
@@ -223,7 +223,7 @@ export async function extractUserPreferences(
   messages: Message[]
 ): Promise<string[]> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
     
     const conversationText = messages.map(msg => {
       const content = typeof msg.content === 'string' ? msg.content : 

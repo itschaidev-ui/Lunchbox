@@ -44,7 +44,8 @@ export async function continueConversation(
   activeTab?: 'message' | 'code' | 'canvas' | 'plan',
   advancedAI?: boolean,
   taskContext?: string,
-  selectedModel?: string
+  selectedModel?: string,
+  hasImages?: boolean
 ): Promise<{ text: string; tasks?: Omit<Task, 'id' | 'completed'>[]; action?: string; taskText?: string; updates?: Partial<Omit<Task, 'id' | 'completed'>>; tokenUsage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }[]> {
   try {
     console.log('Received history:', JSON.stringify(history, null, 2));
@@ -157,7 +158,44 @@ CODE/PLANS/STORIES:
           .filter(c => (c as any).image)
           .map(c => (c as any).image);
         
-        // If there are images, analyze them and include the analysis
+        // Check if we have images and if selected model supports vision
+        // Groq vision models: llama-4-scout, llama-4-maverick
+        // Other vision models: gpt-4o, gpt-4o-mini, claude-3-5-sonnet, claude-3-opus, gemini-2.0-flash
+        const visionModels = [
+          'llama-4-scout', 'llama-4-maverick', // Groq vision models
+          'gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet', 'claude-3-opus', 
+          'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'
+        ];
+        const isVisionModel = selectedModel && visionModels.includes(selectedModel);
+        
+        // If using a vision model, pass images directly (don't analyze with Gemini)
+        if (imageParts.length > 0 && isVisionModel) {
+          console.log(`👁️ Using vision model ${selectedModel} - passing images directly to model`);
+          
+          // Build message with images for vision model
+          const textContent = textParts.join(' ') || '';
+          const visionContent: any[] = [];
+          
+          // Add text if present
+          if (textContent) {
+            visionContent.push({ type: 'text', text: textContent });
+          }
+          
+          // Add images
+          for (const imageUrl of imageParts) {
+            visionContent.push({
+              type: 'image_url',
+              image_url: { url: imageUrl }
+            });
+          }
+          
+          return {
+            role: msg.role as 'user' | 'assistant' | 'system',
+            content: visionContent
+          };
+        }
+        
+        // If there are images but NOT using a vision model, analyze them with Gemini
         // NOTE: Image analysis works regardless of advancedAI setting
         if (imageParts.length > 0) {
           console.log(`🖼️ Processing ${imageParts.length} image(s) for message (advancedAI: ${advancedAI})`);
@@ -328,7 +366,7 @@ CODE/PLANS/STORIES:
       
       // Fallback for other content types
       return {
-        role: msg.role as 'user' | 'assistant' | 'system',
+      role: msg.role as 'user' | 'assistant' | 'system',
         content: JSON.stringify(msg.content)
       };
     }));
@@ -339,8 +377,143 @@ CODE/PLANS/STORIES:
       content: prompt
     });
 
+    // Auto-select vision model if images are present and no model is selected
+    let modelToUse = selectedModel;
+    const hasImages = messages.some(msg => 
+      Array.isArray(msg.content) && 
+      msg.content.some((c: any) => c.type === 'image_url' || (c as any).image)
+    );
+    
+    if (!modelToUse || modelToUse === 'auto') {
+      if (hasImages) {
+        // Auto-select a vision model - prefer Groq for speed
+        modelToUse = 'llama-4-scout'; // Use Groq Llama 4 Scout for vision (fast and supports images)
+        console.log(`👁️ Auto-selected vision model: ${modelToUse} (images detected)`);
+      }
+    }
+    
     // Use multi-provider AI with automatic failover
-    const response = await multiProviderAI.generateResponse(messages, selectedModel);
+    let response;
+    try {
+      response = await multiProviderAI.generateResponse(messages, modelToUse);
+    } catch (error: any) {
+      // If vision model fails and we have images, fall back to Gemini Vision analysis
+      if (hasImages && error.message?.includes('All AI providers failed')) {
+        console.log(`⚠️ Vision model failed, falling back to Gemini Vision analysis`);
+        
+        // Re-process messages to use Gemini Vision analysis instead
+        const messagesWithAnalysis = await Promise.all(history.map(async (msg) => {
+          if (typeof msg.content === 'string') {
+            return {
+              role: msg.role as 'user' | 'assistant' | 'system',
+              content: msg.content
+            };
+          }
+          
+          if (Array.isArray(msg.content)) {
+            const textParts = msg.content
+              .filter(c => c.text)
+              .map(c => c.text);
+            
+            const imageParts = msg.content
+              .filter(c => (c as any).image)
+              .map(c => (c as any).image);
+            
+            if (imageParts.length > 0) {
+              // Analyze images using Gemini Vision API
+              const { analyzeUploadedFile } = await import('@/lib/ai/document-analyzer');
+              
+              const imageAnalyses = await Promise.all(
+                imageParts.map(async (imageUrl: string, idx: number) => {
+                  try {
+                    const fileName = imageUrl.split('/').pop() || `image-${idx + 1}.png`;
+                    let imageType = 'image/png';
+                    
+                    try {
+                      const headResponse = await fetch(imageUrl, { method: 'HEAD' });
+                      if (headResponse.ok) {
+                        const contentType = headResponse.headers.get('content-type');
+                        if (contentType && contentType.startsWith('image/')) {
+                          imageType = contentType;
+                        }
+                      }
+                    } catch (e) {
+                      // Use default
+                    }
+                    
+                    const analysis = await analyzeUploadedFile(imageUrl, imageType, fileName);
+                    return { url: imageUrl, fileName, analysis };
+                  } catch (error: any) {
+                    return {
+                      url: imageUrl,
+                      fileName: `image-${idx + 1}.png`,
+                      analysis: {
+                        extractedText: '',
+                        summary: `Image ${idx + 1} attached but analysis unavailable.`,
+                        suggestedTags: [],
+                        detectedTaskItems: [],
+                        confidence: 0,
+                        documentType: 'image'
+                      }
+                    };
+                  }
+                })
+              );
+              
+              const textContent = textParts.join(' ') || '';
+              let content = textContent;
+              
+              if (textContent) {
+                content += '\n\n';
+              }
+              
+              content += `[${imageParts.length} image(s) attached]\n\n`;
+              
+              imageAnalyses.forEach((img, idx) => {
+                content += `IMAGE ${idx + 1}: ${img.fileName}\n`;
+                if (img.analysis.summary) {
+                  content += `Description: ${img.analysis.summary}\n`;
+                }
+                if (img.analysis.extractedText) {
+                  content += `Text found: ${img.analysis.extractedText}\n`;
+                }
+                content += '\n';
+              });
+              
+              return {
+                role: msg.role as 'user' | 'assistant' | 'system',
+                content: content
+              };
+            }
+            
+            return {
+              role: msg.role as 'user' | 'assistant' | 'system',
+              content: textParts.join(' ')
+            };
+          }
+          
+          return {
+            role: msg.role as 'user' | 'assistant' | 'system',
+            content: JSON.stringify(msg.content)
+          };
+        }));
+        
+        // Add system prompt
+        messagesWithAnalysis.unshift({
+          role: 'system',
+          content: prompt
+        });
+        
+        // Try again with Gemini (which supports vision natively)
+        try {
+          response = await multiProviderAI.generateResponse(messagesWithAnalysis, 'gemini-2.0-flash');
+        } catch (fallbackError: any) {
+          throw new Error(`Vision processing failed. ${fallbackError.message}`);
+        }
+      } else {
+        throw error;
+      }
+    }
     const text = response.text;
     
     // Log token usage
@@ -459,45 +632,45 @@ CODE/PLANS/STORIES:
       
       // Only proceed with keyword detection if user explicitly requested task creation
       if (userWantsTaskCreation) {
-        const taskCreationKeywords = ['task created', 'task added', 'created a task', 'added to your tasks', 'task is now', 'consider it done', 'fresh tasks', 'coming right up'];
-        
-        const hasCreationKeywords = taskCreationKeywords.some(keyword => text.toLowerCase().includes(keyword));
-        
-        if (hasCreationKeywords) {
-          console.log('Detected task creation intent from keywords:', text);
-          // Try to extract task info from the text - look for "called" or "for" patterns
-          const taskMatch = text.match(/(?:create|add|make).*?task.*?(?:called|for|to|about)\s*(.+?)(?:\.|$)/i) ||
-                           text.match(/task.*?(?:called|for|to|about)\s*(.+?)(?:\.|$)/i);
-          
-          if (taskMatch) {
-            const taskText = taskMatch[1].trim();
-            console.log('Extracted task text:', taskText);
-            return [{ 
-              text: text, 
-              action: 'create',
-              tasks: [{ 
-                text: taskText,
-                description: 'Created by AI assistant'
-              }] 
-            }];
-          }
-          
+    const taskCreationKeywords = ['task created', 'task added', 'created a task', 'added to your tasks', 'task is now', 'consider it done', 'fresh tasks', 'coming right up'];
+    
+    const hasCreationKeywords = taskCreationKeywords.some(keyword => text.toLowerCase().includes(keyword));
+    
+    if (hasCreationKeywords) {
+      console.log('Detected task creation intent from keywords:', text);
+      // Try to extract task info from the text - look for "called" or "for" patterns
+      const taskMatch = text.match(/(?:create|add|make).*?task.*?(?:called|for|to|about)\s*(.+?)(?:\.|$)/i) ||
+                       text.match(/task.*?(?:called|for|to|about)\s*(.+?)(?:\.|$)/i);
+      
+      if (taskMatch) {
+        const taskText = taskMatch[1].trim();
+        console.log('Extracted task text:', taskText);
+        return [{ 
+          text: text, 
+          action: 'create',
+          tasks: [{ 
+            text: taskText,
+            description: 'Created by AI assistant'
+          }] 
+        }];
+      }
+      
           // Try to extract from user message
           const userTaskMatch = userContent.match(/(?:create|add|make).*?task.*?(?:called|for|to|about)\s*(.+?)(?:\.|$)/i) ||
                                userContent.match(/task.*?(?:called|for|to|about)\s*(.+?)(?:\.|$)/i);
-          if (userTaskMatch) {
-            const taskText = userTaskMatch[1].trim();
-            console.log('Extracted task text from user message:', taskText);
-            return [{ 
-              text: text, 
-              action: 'create',
-              tasks: [{ 
-                text: taskText,
-                description: 'Created by AI assistant'
-              }] 
-            }];
-          }
+        if (userTaskMatch) {
+          const taskText = userTaskMatch[1].trim();
+          console.log('Extracted task text from user message:', taskText);
+          return [{ 
+            text: text, 
+            action: 'create',
+            tasks: [{ 
+              text: taskText,
+              description: 'Created by AI assistant'
+            }] 
+          }];
         }
+      }
       }
       
       // Check for other task actions (completion, deletion, update) - these don't require explicit user request
@@ -510,7 +683,7 @@ CODE/PLANS/STORIES:
       const hasUpdateKeywords = taskUpdateKeywords.some(keyword => text.toLowerCase().includes(keyword));
       
       if (hasCompletionKeywords) {
-        console.log('Detected task completion intent from keywords:', text);
+      console.log('Detected task completion intent from keywords:', text);
         // Look for task completion patterns
         const taskMatch = userContent.match(/(?:complete|finish|mark|check off|done with)\s+(?:the\s+)?task\s+(.+?)(?:\s|$)/i) ||
                          userContent.match(/(?:complete|finish|mark|check off|done with)\s+(.+?)(?:\s|$)/i);
@@ -523,9 +696,9 @@ CODE/PLANS/STORIES:
             action: 'complete', 
             taskText: taskText 
           }];
-        }
-      } else if (hasDeletionKeywords) {
-        console.log('Detected task deletion intent from keywords:', text);
+      }
+    } else if (hasDeletionKeywords) {
+      console.log('Detected task deletion intent from keywords:', text);
         // Look for task deletion patterns
         const taskMatch = userContent.match(/(?:delete|remove|get rid of)\s+(?:the\s+)?task\s+(.+?)(?:\s|$)/i) ||
                          userContent.match(/(?:delete|remove|get rid of)\s+(.+?)(?:\s|$)/i) ||
@@ -539,9 +712,9 @@ CODE/PLANS/STORIES:
             action: 'delete', 
             taskText: taskText 
           }];
-        }
-      } else if (hasUpdateKeywords) {
-        console.log('Detected task update intent from keywords:', text);
+      }
+    } else if (hasUpdateKeywords) {
+      console.log('Detected task update intent from keywords:', text);
         
         // Look for task update patterns
         const taskMatch = userContent.match(/(?:now\s+)?(?:make|change|update|edit)\s+(?:it|the\s+task\s+(.+?)|(.+?))\s+(?:due|to be due|for)\s+(.+?)(?:\s|$)/i) ||

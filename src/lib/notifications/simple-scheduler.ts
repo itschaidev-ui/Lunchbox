@@ -366,100 +366,143 @@ export async function scheduleDayOfWeekTaskNotifications(
   taskTitle: string,
   availableDays: number[],
   availableDaysTime: string,
-  userTimezone: string
+  userTimezone: string,
+  repeatWeeks?: number,
+  repeatStartDate?: string
 ): Promise<void> {
-  if (!availableDays || availableDays.length === 0 || !availableDaysTime) {
-    console.log(`⏭️ No available days or time for task "${taskTitle}", skipping notifications`);
+  if (!availableDays || availableDays.length === 0) {
+    console.log(`⏭️ No available days for task "${taskTitle}", skipping notifications`);
+    return;
+  }
+  
+  // If no time is specified, skip notifications (user can complete task anytime during the day)
+  if (!availableDaysTime || availableDaysTime.trim() === '') {
+    console.log(`⏭️ No time specified for task "${taskTitle}", skipping notifications (task available all day)`);
     return;
   }
   
   try {
     console.log(`📅 Scheduling day-of-week notifications for task: ${taskTitle}`);
     console.log(`   Days: ${availableDays.join(', ')}, Time: ${availableDaysTime}, Timezone: ${userTimezone}`);
+    if (repeatWeeks) {
+      console.log(`   Repeat limit: ${repeatWeeks} weeks${repeatStartDate ? ` (started: ${repeatStartDate})` : ''}`);
+    }
     
     const now = new Date();
+    const startDate = repeatStartDate ? new Date(repeatStartDate) : now;
+    const endDate = repeatWeeks ? new Date(startDate.getTime() + repeatWeeks * 7 * 24 * 60 * 60 * 1000) : null;
     
     // Parse time (HH:mm format)
     const [hours, minutes] = availableDaysTime.split(':').map(Number);
     
-    // For each available day, schedule notifications for the next occurrence
+    // For each available day, schedule notifications for occurrences within the repeat limit
     for (const dayOfWeek of availableDays) {
-      // Calculate next occurrence of this day
-      const nextOccurrence = getNextDayOfWeek(dayOfWeek, hours, minutes, userTimezone);
+      // Calculate all occurrences within the repeat period (or just next occurrence if no limit)
+      let weekOffset = 0;
+      let hasMoreOccurrences = true;
       
-      if (!nextOccurrence) {
-        console.log(`⏭️ Could not calculate next occurrence for day ${dayOfWeek}`);
-        continue;
-      }
-      
-      console.log(`   Next occurrence for day ${dayOfWeek}: ${nextOccurrence.toISOString()}`);
-      
-      // Schedule reminders BEFORE: 1hr, 30min, 15min, 10min, 5min
-      const reminderTimes = [
-        { minutes: 60, label: '1hr' },
-        { minutes: 30, label: '30min' },
-        { minutes: 15, label: '15min' },
-        { minutes: 10, label: '10min' },
-        { minutes: 5, label: '5min' }
-      ];
-      
-      for (const { minutes: mins, label } of reminderTimes) {
-        const reminderTime = new Date(nextOccurrence);
-        reminderTime.setMinutes(reminderTime.getMinutes() - mins);
+      while (hasMoreOccurrences) {
+        // Calculate occurrence for this week offset
+        const occurrence = getNextDayOfWeekWithOffset(dayOfWeek, hours, minutes, userTimezone, weekOffset, startDate);
         
-        if (reminderTime > now) {
+        if (!occurrence) {
+          hasMoreOccurrences = false;
+          break;
+        }
+        
+        // Check if this occurrence is within the repeat limit
+        if (endDate && occurrence > endDate) {
+          console.log(`   ⏭️ Occurrence ${occurrence.toISOString()} is beyond repeat limit (${endDate.toISOString()}), stopping`);
+          hasMoreOccurrences = false;
+          break;
+        }
+        
+        // Only schedule if occurrence is in the future
+        if (occurrence <= now) {
+          weekOffset++;
+          continue;
+        }
+        
+        console.log(`   Next occurrence for day ${dayOfWeek} (week ${weekOffset}): ${occurrence.toISOString()}`);
+        
+        // Schedule reminders BEFORE: 1hr, 30min, 15min, 10min, 5min
+        const reminderTimes = [
+          { minutes: 60, label: '1hr' },
+          { minutes: 30, label: '30min' },
+          { minutes: 15, label: '15min' },
+          { minutes: 10, label: '10min' },
+          { minutes: 5, label: '5min' }
+        ];
+        
+        for (const { minutes: mins, label } of reminderTimes) {
+          const reminderTime = new Date(occurrence);
+          reminderTime.setMinutes(reminderTime.getMinutes() - mins);
+          
+          if (reminderTime > now) {
+            await scheduleTaskNotification(
+              taskId,
+              userId,
+              userEmail,
+              userName,
+              taskTitle,
+              occurrence.toISOString(),
+              'reminder',
+              reminderTime
+            );
+            console.log(`   ✅ Scheduled ${label} reminder for day ${dayOfWeek} (week ${weekOffset})`);
+          }
+        }
+        
+        // Schedule exact time notification
+        if (occurrence > now) {
           await scheduleTaskNotification(
             taskId,
             userId,
             userEmail,
             userName,
             taskTitle,
-            nextOccurrence.toISOString(),
+            occurrence.toISOString(),
             'reminder',
-            reminderTime
+            occurrence
           );
-          console.log(`   ✅ Scheduled ${label} reminder for day ${dayOfWeek}`);
+          console.log(`   ✅ Scheduled exact time notification for day ${dayOfWeek} (week ${weekOffset})`);
         }
-      }
-      
-      // Schedule exact time notification
-      if (nextOccurrence > now) {
-        await scheduleTaskNotification(
-          taskId,
-          userId,
-          userEmail,
-          userName,
-          taskTitle,
-          nextOccurrence.toISOString(),
-          'reminder',
-          nextOccurrence
-        );
-        console.log(`   ✅ Scheduled exact time notification for day ${dayOfWeek}`);
-      }
-      
-      // Schedule overdue notifications AFTER: 10min, 30min, 1hr, 1.5hr
-      const overdueTimes = [
-        { minutes: 10, label: '10min' },
-        { minutes: 30, label: '30min' },
-        { minutes: 60, label: '1hr' },
-        { minutes: 90, label: '1.5hr' }
-      ];
-      
-      for (const { minutes: mins, label } of overdueTimes) {
-        const overdueTime = new Date(nextOccurrence);
-        overdueTime.setMinutes(overdueTime.getMinutes() + mins);
         
-        await scheduleTaskNotification(
-          taskId,
-          userId,
-          userEmail,
-          userName,
-          taskTitle,
-          nextOccurrence.toISOString(),
-          'overdue',
-          overdueTime
-        );
-        console.log(`   ✅ Scheduled ${label} overdue notification for day ${dayOfWeek}`);
+        // Schedule overdue notifications AFTER: 10min, 30min, 1hr, 1.5hr
+        const overdueTimes = [
+          { minutes: 10, label: '10min' },
+          { minutes: 30, label: '30min' },
+          { minutes: 60, label: '1hr' },
+          { minutes: 90, label: '1.5hr' }
+        ];
+        
+        for (const { minutes: mins, label } of overdueTimes) {
+          const overdueTime = new Date(occurrence);
+          overdueTime.setMinutes(overdueTime.getMinutes() + mins);
+          
+          await scheduleTaskNotification(
+            taskId,
+            userId,
+            userEmail,
+            userName,
+            taskTitle,
+            occurrence.toISOString(),
+            'overdue',
+            overdueTime
+          );
+          console.log(`   ✅ Scheduled ${label} overdue notification for day ${dayOfWeek} (week ${weekOffset})`);
+        }
+        
+        // If no repeat limit, only schedule the next occurrence
+        if (!repeatWeeks) {
+          hasMoreOccurrences = false;
+        } else {
+          weekOffset++;
+          // Stop if we've scheduled enough weeks (limit to prevent infinite loops)
+          if (weekOffset >= repeatWeeks * 2) {
+            hasMoreOccurrences = false;
+          }
+        }
       }
     }
     
@@ -473,34 +516,41 @@ export async function scheduleDayOfWeekTaskNotifications(
  * Get the next occurrence of a specific day of week at a specific time in user's timezone
  */
 function getNextDayOfWeek(dayOfWeek: number, hours: number, minutes: number, userTimezone: string): Date | null {
+  return getNextDayOfWeekWithOffset(dayOfWeek, hours, minutes, userTimezone, 0, new Date());
+}
+
+/**
+ * Get occurrence of a specific day of week with a week offset from a start date
+ */
+function getNextDayOfWeekWithOffset(
+  dayOfWeek: number, 
+  hours: number, 
+  minutes: number, 
+  userTimezone: string,
+  weekOffset: number,
+  startDate: Date
+): Date | null {
   try {
-    // Use Intl.DateTimeFormat to handle timezone conversion
-    const now = new Date();
+    // Get the day of week for the start date
+    const startDay = startDate.getDay();
     
-    // Get current day of week (0=Sunday, 6=Saturday)
-    const currentDay = now.getDay();
-    
-    // Calculate days until next occurrence
-    let daysUntil = dayOfWeek - currentDay;
-    if (daysUntil <= 0) {
+    // Calculate days until the target day of week in the target week
+    let daysUntil = dayOfWeek - startDay;
+    if (daysUntil < 0) {
       daysUntil += 7; // Next week
     }
     
-    // Create date for next occurrence
-    const nextDate = new Date(now);
-    nextDate.setDate(nextDate.getDate() + daysUntil);
-    nextDate.setHours(hours, minutes, 0, 0);
+    // Add the week offset
+    daysUntil += weekOffset * 7;
     
-    // Convert to user's timezone
-    // Create a date string in the user's timezone
-    const dateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+    // Create date for the occurrence
+    const occurrenceDate = new Date(startDate);
+    occurrenceDate.setDate(occurrenceDate.getDate() + daysUntil);
+    occurrenceDate.setHours(hours, minutes, 0, 0);
     
-    // Use Intl.DateTimeFormat to interpret this as local time in user's timezone
-    // For now, we'll use the local time directly and let the system handle timezone
-    // The actual timezone conversion should happen when scheduling
-    return nextDate;
+    return occurrenceDate;
   } catch (error) {
-    console.error('❌ Error calculating next day of week:', error);
+    console.error('❌ Error calculating day of week with offset:', error);
     return null;
   }
 }

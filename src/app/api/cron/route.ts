@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkAndProcessNotifications } from '@/lib/notifications/simple-task-notifications';
 import { checkAndResetRoutines, resetDayOfWeekTasks } from '@/lib/routine-scheduler';
 import { checkTaskCompletionEmails } from '@/lib/notifications/completion-email-cron';
+import { getDb } from '@/lib/firebase-admin';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,8 +13,13 @@ export async function GET(request: NextRequest) {
     // Process completion/uncompletion emails (website cron)
     await checkTaskCompletionEmails();
     
-    // Check and reset routines if it's midnight
-    await checkAndResetRoutines();
+    // Check and reset routines if it's midnight (use Admin SDK)
+    const adminDb = getDb();
+    if (!adminDb) {
+      console.warn('⚠️ Admin SDK not available, skipping routine reset (will fail with permissions)');
+    } else {
+      await checkAndResetRoutines(adminDb);
+    }
     
     // Reset day-of-week tasks at midnight (uncheck completed tasks so they're fresh for the new day)
     const now = new Date();

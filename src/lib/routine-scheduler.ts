@@ -120,17 +120,25 @@ export async function resetDailyRoutines(): Promise<void> {
 /**
  * Check if it's time to reset routines based on user settings
  * This checks if reset time has passed since last reset
+ * Uses Admin SDK if provided, otherwise falls back to client SDK
  */
-export async function checkAndResetRoutines(): Promise<void> {
+export async function checkAndResetRoutines(adminDb?: any): Promise<void> {
   try {
     const now = new Date();
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     
     console.log(`⏰ Checking routines reset at ${currentTime}...`);
     
-    // Get all users with custom reset times
-    const settingsRef = collection(db, 'routine_settings');
-    const settingsSnapshot = await getDocs(settingsRef);
+    let settingsSnapshot: any;
+    
+    if (adminDb) {
+      // Use Admin SDK
+      settingsSnapshot = await adminDb.collection('routine_settings').get();
+    } else {
+      // Use client SDK
+      const settingsRef = collection(db, 'routine_settings');
+      settingsSnapshot = await getDocs(settingsRef);
+    }
     
     let resetCount = 0;
     
@@ -139,18 +147,80 @@ export async function checkAndResetRoutines(): Promise<void> {
       const userId = settings.userId;
       const resetTime = settings.resetTime || '00:00';
       
-      // Get last reset record
-      const lastReset = await getLastReset(userId);
+      // Get last reset record (use Admin SDK if available)
+      const lastReset = await getLastReset(userId, adminDb);
       
       // Check if reset is needed (time has passed since last reset)
       if (needsReset(resetTime, lastReset)) {
         console.log(`🔄 Reset needed for user ${userId} (reset time: ${resetTime})`);
         
-        // Reset the user's routines
-        await resetUserRoutines(userId);
+        // Reset the user's routines - use Admin SDK if available
+        if (adminDb) {
+          // Use Admin SDK directly (same logic as resetUserRoutinesWithAdmin from API route)
+          try {
+            // 1. Delete all routine completions
+            const completionsSnapshot = await adminDb.collection('routine_completions')
+              .where('userId', '==', userId)
+              .get();
+            
+            const deletePromises: Promise<void>[] = [];
+            completionsSnapshot.forEach((docSnap: any) => {
+              deletePromises.push(docSnap.ref.delete());
+            });
+            
+            await Promise.all(deletePromises);
+            
+            // 2. Get all routines for this user using Admin SDK
+            const routinesSnapshot = await adminDb.collection('routines')
+              .where('userId', '==', userId)
+              .get();
+            
+            const allRoutineTaskIds = new Set<string>();
+            routinesSnapshot.forEach((docSnap: any) => {
+              const routine = docSnap.data();
+              if (routine.taskIds && Array.isArray(routine.taskIds)) {
+                routine.taskIds.forEach((taskId: string) => {
+                  allRoutineTaskIds.add(taskId);
+                });
+              }
+            });
+            
+            // 3. Uncheck ALL tasks that are part of routines
+            const updatePromises: Promise<void>[] = [];
+            if (allRoutineTaskIds.size > 0) {
+              // Import admin for FieldValue.delete() outside the loop
+              const { default: admin } = await import('firebase-admin');
+              
+              const tasksSnapshot = await adminDb.collection('tasks')
+                .where('userId', '==', userId)
+                .get();
+              
+              tasksSnapshot.forEach((docSnap: any) => {
+                const taskId = docSnap.id;
+                if (allRoutineTaskIds.has(taskId)) {
+                  const updateData: any = { completed: false };
+                  const taskData = docSnap.data();
+                  if (taskData.completedAt) {
+                    updateData.completedAt = admin.firestore.FieldValue.delete();
+                  }
+                  updatePromises.push(docSnap.ref.update(updateData));
+                }
+              });
+            }
+            
+            await Promise.all(updatePromises);
+            console.log(`✅ Reset ${deletePromises.length} completions and ${updatePromises.length} tasks for user ${userId} (Admin SDK)`);
+          } catch (error) {
+            console.error(`❌ Error resetting routines with Admin SDK for user ${userId}:`, error);
+            throw error;
+          }
+        } else {
+          // Use client SDK
+          await resetUserRoutines(userId);
+        }
         
-        // Update last reset record
-        await updateLastReset(userId);
+        // Update last reset record (use Admin SDK if available)
+        await updateLastReset(userId, adminDb);
         
         resetCount++;
       }
@@ -244,8 +314,10 @@ export async function resetDayOfWeekTasks(): Promise<number> {
   try {
     console.log('🔄 Resetting day-of-week tasks at midnight...');
     
-    const today = new Date().getDay(); // 0=Sunday, 1=Monday, etc.
+    const now = new Date();
+    const today = now.getDay(); // 0=Sunday, 1=Monday, etc.
     let resetCount = 0;
+    let skippedCount = 0;
     
     // Get all tasks with availableDays
     const tasksRef = collection(db, 'tasks');
@@ -260,6 +332,18 @@ export async function resetDayOfWeekTasks(): Promise<number> {
       if (task.availableDays && task.availableDays.length > 0 && task.completed) {
         // Check if today is one of the available days
         if (task.availableDays.includes(today)) {
+          // Check if repeat limit has been reached
+          if (task.repeatWeeks && task.repeatStartDate) {
+            const startDate = new Date(task.repeatStartDate);
+            const endDate = new Date(startDate.getTime() + task.repeatWeeks * 7 * 24 * 60 * 60 * 1000);
+            
+            if (now > endDate) {
+              console.log(`  ⏭️ Skipping task "${task.text}" - repeat limit (${task.repeatWeeks} weeks) reached`);
+              skippedCount++;
+              return; // Don't reset this task
+            }
+          }
+          
           // Uncheck the task so it's fresh for today
           const taskRef = doc(db, 'tasks', task.id);
           updatePromises.push(
@@ -276,7 +360,7 @@ export async function resetDayOfWeekTasks(): Promise<number> {
     
     await Promise.all(updatePromises);
     
-    console.log(`✅ Reset ${resetCount} day-of-week tasks for day ${today}`);
+    console.log(`✅ Reset ${resetCount} day-of-week tasks for day ${today}${skippedCount > 0 ? ` (skipped ${skippedCount} tasks that reached repeat limit)` : ''}`);
     return resetCount;
   } catch (error) {
     console.error('❌ Error resetting day-of-week tasks:', error);

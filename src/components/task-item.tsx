@@ -27,6 +27,7 @@ import { TaskTimer } from './task-timer';
 import { useAuth } from '@/context/auth-context';
 import { DEFAULT_COLUMNS } from './kanban/column-manager';
 import { getTagStyles } from '@/lib/tag-colors';
+import { isTaskCompletedForDate } from '@/lib/firebase-task-daily-completions';
 
 // A simple markdown to HTML converter
 const Markdown = ({ text }: { text: string }) => {
@@ -63,8 +64,38 @@ interface TaskItemProps {
 export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isSelected = false, onToggleSelect }: TaskItemProps) {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isTimerOpen, setIsTimerOpen] = useState(false);
+  const [isCompletedToday, setIsCompletedToday] = useState(false);
   const { user } = useAuth();
-  const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !task.completed;
+  const today = new Date();
+  const isRepeatingTask = task.availableDays && task.availableDays.length > 0;
+  
+  // Check if repeating task is completed for today
+  useEffect(() => {
+    if (isRepeatingTask) {
+      const checkCompletion = async () => {
+        const completed = await isTaskCompletedForDate(task.id, today);
+        setIsCompletedToday(completed);
+      };
+      checkCompletion();
+      
+      // Listen for daily completion changes
+      const handleCompletionChange = (event: CustomEvent) => {
+        if (event.detail.taskId === task.id) {
+          checkCompletion();
+        }
+      };
+      
+      window.addEventListener('daily-completion-changed', handleCompletionChange as EventListener);
+      return () => {
+        window.removeEventListener('daily-completion-changed', handleCompletionChange as EventListener);
+      };
+    }
+  }, [task.id, isRepeatingTask, today]);
+  
+  // For repeating tasks, use daily completion; for regular tasks, use global completed flag
+  const taskCompleted = isRepeatingTask ? isCompletedToday : task.completed;
+  
+  const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && !taskCompleted;
   
   // Check if task is locked (has availableDays but today is not in the list)
   const isLocked = task.availableDays && task.availableDays.length > 0 && 
@@ -128,12 +159,12 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
     // Always sync column to match task.completed state
     // If task is completed, column should be 'completed'
     // If task is not completed, column should not be 'completed'
-    if (task.completed && savedColumnId !== 'completed') {
+    if (taskCompleted && savedColumnId !== 'completed') {
       console.log('🔄 Task completed, syncing to completed column');
       statuses[task.id] = 'completed';
       setTaskColumnId('completed');
       localStorage.setItem('kanban-task-statuses', JSON.stringify(statuses));
-    } else if (!task.completed && savedColumnId === 'completed') {
+    } else if (!taskCompleted && savedColumnId === 'completed') {
       // Task was uncompleted, move it back to the first non-completed column
       const firstNonCompletedColumn = columns.find(col => col.id !== 'completed') || columns[0];
       if (firstNonCompletedColumn) {
@@ -143,7 +174,7 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
         localStorage.setItem('kanban-task-statuses', JSON.stringify(statuses));
       }
     }
-  }, [task.completed, task.id, columns]);
+  }, [taskCompleted, task.id, columns]);
 
   // Listen for column updates
   useEffect(() => {
@@ -245,7 +276,7 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
     // If moving to 'completed' column and task is not completed, toggle it
     // If moving away from 'completed' column and task is completed, toggle it
     const willBeCompleted = targetColumnId === 'completed';
-    if (task.completed !== willBeCompleted) {
+    if (taskCompleted !== willBeCompleted) {
       // Add a small delay before toggling to allow UI to update first
       setTimeout(() => {
         onToggle(task.id);
@@ -284,8 +315,8 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
     <Collapsible>
       <div
         className={cn(
-          'mobile-list-item flex items-start gap-3 p-4 rounded-lg border transition-colors',
-          task.completed ? 'bg-gray-800/30 border-gray-700/50' : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/70 hover:border-gray-600',
+              'mobile-list-item flex items-start gap-3 p-4 rounded-lg border transition-colors',
+              taskCompleted ? 'bg-gray-800/30 border-gray-700/50' : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/70 hover:border-gray-600',
           isSelected && 'ring-2 ring-blue-500 bg-blue-500/10'
         )}
       >
@@ -302,24 +333,24 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
         ) : (
           <div
             className="h-5 w-5 rounded border-2 flex items-center justify-center transition-all duration-200 hover:scale-110"
-            style={{
-              backgroundColor: task.completed
-                ? 'rgb(107, 114, 128)' 
-                : currentColumn.id === 'todo' 
-                ? 'rgba(31, 41, 55, 0.5)' 
-                : getColorStyles(currentColumn.color).bg,
-              borderColor: task.completed
-                ? 'rgb(107, 114, 128)' 
-                : currentColumn.id === 'todo' 
-                ? 'rgb(75, 85, 99)' 
-                : getColorStyles(currentColumn.color).border,
+                style={{
+                  backgroundColor: taskCompleted
+                    ? 'rgb(107, 114, 128)' 
+                    : currentColumn.id === 'todo' 
+                    ? 'rgba(31, 41, 55, 0.5)' 
+                    : getColorStyles(currentColumn.color).bg,
+                  borderColor: taskCompleted
+                    ? 'rgb(107, 114, 128)' 
+                    : currentColumn.id === 'todo' 
+                    ? 'rgb(75, 85, 99)' 
+                    : getColorStyles(currentColumn.color).border,
               cursor: isLocked ? 'not-allowed' : 'pointer',
               opacity: isLocked ? 0.5 : 1,
             }}
             onClick={() => { if (!isLocked) handleToggleProgress(); }}
             title={isLocked ? 'Task locked - not available today' : currentColumn.title}
           >
-            {!task.completed && currentColumn.id !== 'todo' && currentColumn.id !== 'completed' && (
+            {!taskCompleted && currentColumn.id !== 'todo' && currentColumn.id !== 'completed' && (
               <ColumnIcon className={`${currentColumn.color} h-3 w-3 transition-all duration-200`} />
             )}
           </div>
@@ -335,7 +366,7 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
               htmlFor={`task-${task.id}`}
               className={cn(
                 'mobile-body font-medium transition-colors',
-                isLocked ? 'text-muted-foreground cursor-not-allowed' : task.completed ? 'text-muted-foreground line-through cursor-pointer' : 'text-foreground cursor-pointer'
+                  isLocked ? 'text-muted-foreground cursor-not-allowed' : taskCompleted ? 'text-muted-foreground line-through cursor-pointer' : 'text-foreground cursor-pointer'
               )}
             >
               {task.text}

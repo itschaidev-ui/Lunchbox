@@ -3,7 +3,7 @@ import { scheduleNotificationsForTask, scheduleDayOfWeekTaskNotifications } from
 
 export async function POST(request: NextRequest) {
   try {
-    const { taskId, userId, userEmail, userName, taskTitle, dueDate, availableDays, availableDaysTime, userTimezone } = await request.json();
+    const { taskId, userId, userEmail, userName, taskTitle, dueDate, availableDays, availableDaysTime, userTimezone, repeatWeeks, repeatStartDate } = await request.json();
 
     if (!taskId || !userId || !userEmail || !taskTitle) {
       return NextResponse.json({
@@ -15,17 +15,25 @@ export async function POST(request: NextRequest) {
     console.log(`📅 Scheduling notifications for task: ${taskTitle}`);
     
     // Check if this is a day-of-week task
-    if (availableDays && availableDays.length > 0 && availableDaysTime) {
-      await scheduleDayOfWeekTaskNotifications(
-        taskId,
-        userId,
-        userEmail,
-        userName || 'User',
-        taskTitle,
-        availableDays,
-        availableDaysTime,
-        userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone
-      );
+    if (availableDays && availableDays.length > 0) {
+      // Only schedule notifications if time is specified (time is optional)
+      if (availableDaysTime && availableDaysTime.trim() !== '') {
+        await scheduleDayOfWeekTaskNotifications(
+          taskId,
+          userId,
+          userEmail,
+          userName || 'User',
+          taskTitle,
+          availableDays,
+          availableDaysTime,
+          userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          repeatWeeks,
+          repeatStartDate
+        );
+      } else {
+        // Task has days but no time - skip notifications (available all day)
+        console.log(`⏭️ Day-of-week task without time - skipping notifications (available all day)`);
+      }
     } else if (dueDate) {
       // Regular task with due date
       await scheduleNotificationsForTask(
@@ -39,7 +47,7 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({
         success: false,
-        error: 'Task must have either dueDate or availableDays with availableDaysTime'
+        error: 'Task must have either dueDate or availableDays'
       }, { status: 400 });
     }
 

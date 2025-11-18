@@ -213,12 +213,27 @@ export function AssistantSidebar({ isOpen, onClose, initialMessages = [], select
 
   // Removed auto-scroll - let user manually control scrolling
   
-  const handleImageSelect = async (file: File) => {
+  const handleImageSelect = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+    
+    // Use the first file
+    const file = fileArray[0];
+    
     // Convert image to base64
     const reader = new FileReader();
     reader.onloadend = () => {
       setSelectedImage(reader.result as string);
       setSelectedImageName(file.name);
+      
+      // Auto-select vision model if not already using one
+      if (onModelChange) {
+        const visionModels = ['llama-4-scout', 'llama-4-maverick', 'llama-3.2-90b-vision', 'gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet', 'claude-3-opus', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+        if (!visionModels.includes(selectedModel || 'auto')) {
+          onModelChange('llama-4-scout'); // Use Groq Llama 4 Scout for vision (fast and supports images)
+        }
+      }
+      
       toast({
         title: "Image attached",
         description: `${file.name} will be included with your next message.`,
@@ -249,6 +264,21 @@ export function AssistantSidebar({ isOpen, onClose, initialMessages = [], select
     setSelectedImageName('');
     
     const currentMessages = [...messages, userMessage];
+    
+    // If all images removed and using a vision model, switch back to auto
+    if (onModelChange) {
+      const visionModels = ['llama-4-scout', 'llama-4-maverick', 'gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet', 'claude-3-opus', 'gemini-1.5-flash'];
+      if (visionModels.includes(selectedModel || 'auto')) {
+        // Only switch back if no images in the message
+        const hasImagesInMessages = currentMessages.some(msg => 
+          Array.isArray(msg.content) && 
+          msg.content.some((c: any) => (c as any).image)
+        );
+        if (!hasImagesInMessages) {
+          onModelChange('auto');
+        }
+      }
+    }
     setMessages(currentMessages);
 
     // Save user message to Firebase if authenticated

@@ -12,6 +12,12 @@ import {
   subscribeToUserTasks,
   fetchUserTasks
 } from '@/lib/firebase-tasks';
+import { logTaskActivity } from '@/lib/firebase-task-activity';
+import { 
+  isTaskCompletedForDate, 
+  markTaskCompletedForDate, 
+  unmarkTaskCompletedForDate 
+} from '@/lib/firebase-task-daily-completions';
 // Removed old reminders system imports
 // Notification scheduling moved to server-side API calls
 
@@ -49,6 +55,17 @@ export function TaskProvider({ children }: { children: ReactNode }) {
             const taskId = await saveTaskToFirebase(taskWithCompleted, user.uid, user.email);
             console.log('✅ Task saved to Firebase with ID:', taskId);
             
+            // Log activity
+            try {
+                await logTaskActivity(taskId, user.uid, 'created', {
+                    description: task.availableDays && task.availableDays.length > 0 
+                        ? `Created repeating task: ${task.text}` 
+                        : `Created task: ${task.text}`
+                });
+            } catch (logError) {
+                console.error('Failed to log task creation activity:', logError);
+            }
+            
             // Track task creation
             trackEvent('task_created');
             setTag('total_tasks', (tasks.length + 1).toString());
@@ -70,7 +87,9 @@ export function TaskProvider({ children }: { children: ReactNode }) {
                             taskTitle: task.text,
                             availableDays: task.availableDays,
                             availableDaysTime: task.availableDaysTime,
-                            userTimezone: task.userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone
+                            userTimezone: task.userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+                            repeatWeeks: task.repeatWeeks,
+                            repeatStartDate: task.repeatStartDate
                         })
                     });
                     console.log('✅ Day-of-week notifications scheduled for task');
@@ -140,7 +159,57 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         const task = tasks.find(t => t.id === id);
         if (!task) return;
         
-        // Store the new completed state
+        const today = new Date();
+        const isRepeatingTask = task.availableDays && task.availableDays.length > 0;
+        
+        // For repeating tasks, check completion for today's date
+        if (isRepeatingTask && user) {
+            try {
+                console.log(`🔄 Toggling repeating task ${id} for date ${today.toISOString().split('T')[0]}`);
+                const isCompletedToday = await isTaskCompletedForDate(id, today);
+                console.log(`📋 Current completion state for today: ${isCompletedToday}`);
+                const newCompletedState = !isCompletedToday;
+                
+                if (newCompletedState) {
+                    // Mark as completed for today
+                    console.log(`✅ Marking task ${id} as completed for ${today.toISOString().split('T')[0]}`);
+                    await markTaskCompletedForDate(id, user.uid, today);
+                    console.log(`✅ Successfully marked as completed`);
+                } else {
+                    // Unmark as completed for today
+                    console.log(`❌ Unmarking task ${id} as completed for ${today.toISOString().split('T')[0]}`);
+                    await unmarkTaskCompletedForDate(id, today);
+                    console.log(`✅ Successfully unmarked`);
+                }
+                
+                // Log activity
+                try {
+                    await logTaskActivity(id, user.uid, newCompletedState ? 'completed' : 'uncompleted', {
+                        description: `Completed for ${today.toISOString().split('T')[0]}`
+                    });
+                } catch (logError) {
+                    console.error('Failed to log task toggle activity:', logError);
+                }
+                
+                // Dispatch custom event to notify components to refresh daily completions
+                window.dispatchEvent(new CustomEvent('daily-completion-changed', {
+                    detail: { taskId: id, date: today.toISOString().split('T')[0], completed: newCompletedState }
+                }));
+                console.log(`📢 Dispatched daily-completion-changed event for task ${id}`);
+                
+                // Small delay to ensure Firestore write completes before refreshing
+                setTimeout(() => {
+                    fetchTasks();
+                }, 300);
+                return;
+            } catch (error) {
+                console.error('❌ Error toggling repeating task:', error);
+                alert(`Failed to toggle task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                return;
+            }
+        }
+        
+        // For non-repeating tasks, use the regular completion system
         const newCompletedState = !task.completed;
         
         // Track this as a pending update to prevent listener from overwriting
@@ -167,6 +236,15 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         try {
             // Update Firebase
             await updateTaskInFirebase(id, { completed: newCompletedState });
+            
+            // Log activity
+            if (user) {
+                try {
+                    await logTaskActivity(id, user.uid, newCompletedState ? 'completed' : 'uncompleted');
+                } catch (logError) {
+                    console.error('Failed to log task toggle activity:', logError);
+                }
+            }
             
             // Clear pending update after successful Firebase update (with delay to allow listener to process)
             setTimeout(() => {
@@ -325,8 +403,20 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
     const deleteTask = async (id: string) => {
         try {
+            const task = tasks.find(t => t.id === id);
             await deleteTaskFromFirebase(id);
             setTasks(prev => prev.filter(task => task.id !== id));
+            
+            // Log activity
+            if (user && task) {
+                try {
+                    await logTaskActivity(id, user.uid, 'deleted', {
+                        description: `Deleted task: ${task.text}`
+                    });
+                } catch (logError) {
+                    console.error('Failed to log task deletion activity:', logError);
+                }
+            }
             
             // Cancel notifications for deleted task with new simple system
             try {
@@ -346,12 +436,40 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
     const editTask = async (id: string, updatedTask: Partial<Omit<Task, 'id' | 'completed'>>) => {
         try {
+            const oldTask = tasks.find(t => t.id === id);
             await updateTaskInFirebase(id, updatedTask);
             setTasks(prev => 
                 prev.map(task => 
                     task.id === id ? { ...task, ...updatedTask } : task
                 )
             );
+            
+            // Log activity
+            if (user && oldTask) {
+                try {
+                    const changes: string[] = [];
+                    if (updatedTask.text && updatedTask.text !== oldTask.text) {
+                        changes.push(`text: "${oldTask.text}" → "${updatedTask.text}"`);
+                    }
+                    if (updatedTask.dueDate !== undefined && updatedTask.dueDate !== oldTask.dueDate) {
+                        changes.push('due date changed');
+                    }
+                    if (updatedTask.starred !== undefined && updatedTask.starred !== oldTask.starred) {
+                        changes.push(updatedTask.starred ? 'starred' : 'unstarred');
+                    }
+                    if (updatedTask.availableDays && JSON.stringify(updatedTask.availableDays) !== JSON.stringify(oldTask.availableDays)) {
+                        changes.push('repeating schedule updated');
+                    }
+                    
+                    if (changes.length > 0) {
+                        await logTaskActivity(id, user.uid, 'edited', {
+                            description: `Edited: ${changes.join(', ')}`
+                        });
+                    }
+                } catch (logError) {
+                    console.error('Failed to log task edit activity:', logError);
+                }
+            }
             
             // Update notifications if due date changed with new simple system
             if (updatedTask.dueDate && user) {

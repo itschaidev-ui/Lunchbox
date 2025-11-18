@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { CalendarIcon, Star, Tag, Sparkles, Loader2, Paperclip, X as XIcon, File, Image as ImageIcon, Repeat } from 'lucide-react';
+import { CalendarIcon, Star, Tag, Sparkles, Loader2, Paperclip, File, Image as ImageIcon, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useRef, useState } from 'react';
@@ -43,7 +43,8 @@ export function TaskForm({ onCancel }: TaskFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dateMode, setDateMode] = useState<'date' | 'days'>('date');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
-  const [daysTime, setDaysTime] = useState<string>('09:00'); // Default time for day-of-week tasks
+  const [daysTime, setDaysTime] = useState<string>(''); // Optional time for day-of-week tasks (empty = no specific time)
+  const [repeatWeeks, setRepeatWeeks] = useState<number | undefined>(undefined); // Number of weeks to repeat
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -275,6 +276,10 @@ export function TaskForm({ onCancel }: TaskFormProps) {
       availableDays: dateMode === 'days' && selectedDays.length > 0 ? selectedDays : undefined,
       // Store time for day-of-week tasks
       availableDaysTime: dateMode === 'days' && selectedDays.length > 0 && daysTime ? daysTime : undefined,
+      // Store repeat weeks limit (only if days mode and repeatWeeks is set)
+      repeatWeeks: dateMode === 'days' && repeatWeeks ? repeatWeeks : undefined,
+      // Store start date for repeat period (only if repeatWeeks is set)
+      repeatStartDate: dateMode === 'days' && repeatWeeks ? new Date().toISOString() : undefined,
       // Store user's timezone for proper notification scheduling
       userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       tags: tagNames,
@@ -297,7 +302,8 @@ export function TaskForm({ onCancel }: TaskFormProps) {
     setTagInput('');
     setAttachments([]);
     setSelectedDays([]);
-    setDaysTime('09:00');
+    setDaysTime('');
+    setRepeatWeeks(undefined);
     setDateMode('date');
     onCancel();
   };
@@ -507,16 +513,52 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                     })}
                   </div>
                   
-                  {/* Time Selection for Day-of-Week Tasks */}
+                  {/* Time Selection for Day-of-Week Tasks (Optional) */}
                   {selectedDays.length > 0 && (
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                      <FormLabel className="text-sm font-medium whitespace-nowrap">Time:</FormLabel>
-                      <Input
-                        type="time"
-                        value={daysTime}
-                        onChange={(e) => setDaysTime(e.target.value)}
-                        className="mobile-input w-full sm:w-[140px]"
-                      />
+                      <FormLabel className="text-sm font-medium whitespace-nowrap">Time (optional):</FormLabel>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <Input
+                          type="time"
+                          value={daysTime}
+                          onChange={(e) => setDaysTime(e.target.value)}
+                          className="mobile-input w-full sm:w-[140px]"
+                          placeholder="No specific time"
+                        />
+                        {daysTime && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDaysTime('')}
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-300"
+                            title="Clear time"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Repeat Weeks Selection */}
+                  {selectedDays.length > 0 && (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                      <FormLabel className="text-sm font-medium whitespace-nowrap">Repeat for:</FormLabel>
+                      <select
+                        value={repeatWeeks || ''}
+                        onChange={(e) => setRepeatWeeks(e.target.value ? parseInt(e.target.value) : undefined)}
+                        className="mobile-input w-full sm:w-[160px] bg-gray-800 border-gray-700 text-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      >
+                        <option value="">Forever</option>
+                        <option value="1">1 week</option>
+                        <option value="2">2 weeks</option>
+                        <option value="3">3 weeks</option>
+                        <option value="4">4 weeks</option>
+                        <option value="6">6 weeks</option>
+                        <option value="8">8 weeks</option>
+                        <option value="12">12 weeks</option>
+                      </select>
                     </div>
                   )}
                   
@@ -526,6 +568,7 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                       <p className="text-xs sm:text-sm text-purple-300 font-medium">
                         Available on: <span className="text-purple-200">{selectedDays.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ')}</span>
                         {daysTime && <span className="text-purple-200"> at {daysTime}</span>}
+                        {repeatWeeks && <span className="text-purple-200"> for {repeatWeeks} week{repeatWeeks > 1 ? 's' : ''}</span>}
                       </p>
                     </div>
                   )}
@@ -660,7 +703,7 @@ export function TaskForm({ onCancel }: TaskFormProps) {
                       onClick={() => handleRemoveAttachment(attachment.id)}
                       className="p-1 hover:bg-red-500/20 rounded transition-colors"
                     >
-                      <XIcon className="h-4 w-4 text-red-400" />
+                      <X className="h-4 w-4 text-red-400" />
                     </button>
                   </div>
                 ))}

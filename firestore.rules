@@ -153,6 +153,26 @@ service cloud.firestore {
       allow read, write, create, delete: if true; // Allow server-side access from cron
     }
     
+    // Task Daily Completions - track which days repeating tasks were completed
+    match /task_daily_completions/{completionId} {
+      // Allow read if user is authenticated (they can only see their own via query)
+      allow read: if isAuthenticated();
+      // Allow write (create/update) if user owns the completion (userId matches)
+      allow write: if isAuthenticated() && 
+        (request.resource.data.userId == request.auth.uid || isAdmin());
+      // Allow delete if user owns the completion
+      allow delete: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    
+    // Task Activities - track all task changes and actions
+    match /task_activities/{activityId} {
+      allow read: if isAuthenticated() && 
+        (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isAuthenticated() && 
+        (isOwner(request.resource.data.userId) || isAdmin());
+    }
+    
     // Daily Claims - track daily credit claims
     match /daily_claims/{userId} {
       allow read, write: if isAuthenticated() && 

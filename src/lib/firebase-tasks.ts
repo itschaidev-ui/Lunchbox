@@ -74,6 +74,12 @@ export const saveTask = async (task: Omit<Task, 'id'>, userId: string, userEmail
     if (task.availableDaysTime) {
       (taskData as any).availableDaysTime = task.availableDaysTime;
     }
+    if (task.repeatWeeks !== undefined) {
+      (taskData as any).repeatWeeks = task.repeatWeeks;
+    }
+    if (task.repeatStartDate) {
+      (taskData as any).repeatStartDate = task.repeatStartDate;
+    }
     if (task.columnId) {
       (taskData as any).columnId = task.columnId;
     }

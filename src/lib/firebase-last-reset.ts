@@ -13,17 +13,30 @@ export interface LastResetRecord {
 
 /**
  * Get the last reset record for a user
+ * Uses Admin SDK if provided, otherwise falls back to client SDK
  */
-export async function getLastReset(userId: string): Promise<LastResetRecord | null> {
+export async function getLastReset(userId: string, adminDb?: any): Promise<LastResetRecord | null> {
   try {
-    const resetRef = doc(db, 'last_resets', userId);
-    const resetSnap = await getDoc(resetRef);
+    if (adminDb) {
+      // Use Admin SDK
+      const resetRef = adminDb.collection('last_resets').doc(userId);
+      const resetSnap = await resetRef.get();
+      
+      if (resetSnap.exists) {
+        return resetSnap.data() as LastResetRecord;
+      }
+      return null;
+    } else {
+      // Use client SDK
+      const resetRef = doc(db, 'last_resets', userId);
+      const resetSnap = await getDoc(resetRef);
 
-    if (resetSnap.exists()) {
-      return resetSnap.data() as LastResetRecord;
+      if (resetSnap.exists()) {
+        return resetSnap.data() as LastResetRecord;
+      }
+
+      return null;
     }
-
-    return null;
   } catch (error) {
     console.error('Error getting last reset:', error);
     return null;
@@ -32,19 +45,27 @@ export async function getLastReset(userId: string): Promise<LastResetRecord | nu
 
 /**
  * Update the last reset record for a user
+ * Uses Admin SDK if provided, otherwise falls back to client SDK
  */
-export async function updateLastReset(userId: string): Promise<void> {
+export async function updateLastReset(userId: string, adminDb?: any): Promise<void> {
   try {
     const now = new Date();
-    const resetRef = doc(db, 'last_resets', userId);
-    
     const record: LastResetRecord = {
       userId,
       lastResetAt: now.toISOString(),
       lastResetDate: now.toISOString().split('T')[0], // YYYY-MM-DD
     };
 
-    await setDoc(resetRef, record);
+    if (adminDb) {
+      // Use Admin SDK
+      const resetRef = adminDb.collection('last_resets').doc(userId);
+      await resetRef.set(record);
+    } else {
+      // Use client SDK
+      const resetRef = doc(db, 'last_resets', userId);
+      await setDoc(resetRef, record);
+    }
+    
     console.log(`✅ Updated last reset for user ${userId}`);
   } catch (error) {
     console.error('Error updating last reset:', error);

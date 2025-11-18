@@ -6,6 +6,8 @@ export type Task = {
   dueDate?: string;
   availableDays?: number[]; // Days of week when task is available (0=Sunday, 1=Monday, ..., 6=Saturday)
   availableDaysTime?: string; // Time for day-of-week tasks (HH:mm format, e.g., "09:00")
+  repeatWeeks?: number; // Number of weeks to repeat (e.g., 1, 2, 3). If undefined, repeats indefinitely
+  repeatStartDate?: string; // ISO date string when the repeat period started (used to calculate if repeat limit is reached)
   description?: string;
   tags?: string[]; // Tags for categorizing tasks
   tagColors?: Record<string, string>; // Map of tag -> color (e.g., {"work": "blue", "urgent": "red"})

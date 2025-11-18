@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from './button';
-import { ChevronDown, Zap, Brain, Sparkles } from 'lucide-react';
+import { ChevronDown, Zap, Brain, Sparkles, Eye } from 'lucide-react';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -75,6 +75,60 @@ const availableModels: AIModel[] = [
     speed: 'fast',
     capabilities: ['safety', 'content-moderation', 'analysis'],
     icon: <Sparkles className="h-4 w-4" />
+  },
+  {
+    id: 'llama-4-scout',
+    name: 'Llama 4 Scout',
+    provider: 'groq',
+    description: 'Meta Llama 4 Scout with vision support',
+    speed: 'fast',
+    capabilities: ['vision', 'image-analysis', 'reasoning', 'code'],
+    icon: <Eye className="h-4 w-4" />
+  },
+  {
+    id: 'llama-4-maverick',
+    name: 'Llama 4 Maverick',
+    provider: 'groq',
+    description: 'Meta Llama 4 Maverick with vision support',
+    speed: 'fast',
+    capabilities: ['vision', 'image-analysis', 'reasoning', 'code', 'long-context'],
+    icon: <Eye className="h-4 w-4" />
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    provider: 'gemini',
+    description: 'Google Gemini 2.0 with vision support',
+    speed: 'fast',
+    capabilities: ['vision', 'image-analysis', 'reasoning', 'code'],
+    icon: <Eye className="h-4 w-4" />
+  },
+  {
+    id: 'gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    provider: 'openai',
+    description: 'OpenAI GPT-4o Mini with vision',
+    speed: 'medium',
+    capabilities: ['vision', 'image-analysis', 'reasoning', 'code'],
+    icon: <Eye className="h-4 w-4" />
+  },
+  {
+    id: 'gpt-4o',
+    name: 'GPT-4o',
+    provider: 'openai',
+    description: 'OpenAI GPT-4o with vision',
+    speed: 'medium',
+    capabilities: ['vision', 'image-analysis', 'reasoning', 'code', 'long-context'],
+    icon: <Eye className="h-4 w-4" />
+  },
+  {
+    id: 'claude-3-5-sonnet',
+    name: 'Claude 3.5 Sonnet',
+    provider: 'anthropic',
+    description: 'Anthropic Claude with vision',
+    speed: 'medium',
+    capabilities: ['vision', 'image-analysis', 'reasoning', 'code', 'long-context'],
+    icon: <Eye className="h-4 w-4" />
   }
 ];
 

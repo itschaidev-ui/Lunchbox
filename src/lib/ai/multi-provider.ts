@@ -29,7 +29,7 @@ export interface AIResponse {
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>;
 }
 
 class MultiProviderAI {
@@ -65,7 +65,7 @@ class MultiProviderAI {
       {
         name: 'gemini',
         apiKey: process.env.GEMINI_API_KEY || '',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.0-flash-exp',
         priority: 3,
         enabled: !!process.env.GEMINI_API_KEY // Only enable if API key is provided
       },
@@ -157,26 +157,108 @@ class MultiProviderAI {
   }
 
   private async callGemini(apiKey: string, messages: ChatMessage[], model: string): Promise<AIResponse> {
+    // Process messages to handle vision content
+    const contents = await Promise.all(messages.map(async (msg) => {
+      const parts: any[] = [];
+      
+      // Handle array content (can include text and images)
+      if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          // Handle text
+          if (part.text || part.type === 'text') {
+            parts.push({
+              text: part.text || String(part)
+            });
+          }
+          // Handle images (OpenAI format)
+          else if (part.type === 'image_url' && part.image_url?.url) {
+            try {
+              // Fetch image and convert to base64
+              const imageResponse = await fetch(part.image_url.url);
+              if (imageResponse.ok) {
+                const imageBuffer = await imageResponse.arrayBuffer();
+                const base64Image = Buffer.from(imageBuffer).toString('base64');
+                const contentType = imageResponse.headers.get('content-type') || 'image/png';
+                
+                parts.push({
+                  inlineData: {
+                    data: base64Image,
+                    mimeType: contentType
+                  }
+                });
+              }
+            } catch (error) {
+              console.error('Error fetching image for Gemini:', error);
+              // Skip this image part
+            }
+          }
+          // Handle our custom image format
+          else if ((part as any).image) {
+            try {
+              const imageResponse = await fetch((part as any).image);
+              if (imageResponse.ok) {
+                const imageBuffer = await imageResponse.arrayBuffer();
+                const base64Image = Buffer.from(imageBuffer).toString('base64');
+                const contentType = imageResponse.headers.get('content-type') || 'image/png';
+                
+                parts.push({
+                  inlineData: {
+                    data: base64Image,
+                    mimeType: contentType
+                  }
+                });
+              }
+            } catch (error) {
+              console.error('Error fetching image for Gemini:', error);
+              // Skip this image part
+            }
+          }
+        }
+      }
+      // Handle string content
+      else if (typeof msg.content === 'string') {
+        parts.push({
+          text: msg.content
+        });
+      }
+      
+      // Gemini expects role to be 'user' or 'model' (not 'assistant')
+      const role = msg.role === 'assistant' ? 'model' : 'user';
+      
+      return {
+        role: role,
+        parts: parts
+      };
+    }));
+    
+    console.log(`📤 Gemini API Request:`, {
+      model: model,
+      messageCount: contents.length,
+      hasImages: contents.some(c => c.parts.some((p: any) => p.inlineData))
+    });
+    
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: messages.map(m => `${m.role}: ${m.content}`).join('\n\n')
-          }]
-        }],
+        contents: contents,
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192, // Increased for vision tasks to allow complete responses
         }
       })
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`❌ Gemini API Error:`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText.substring(0, 200)}`);
     }
 
     const data = await response.json();
@@ -192,18 +274,82 @@ class MultiProviderAI {
   }
 
   private async callGroq(apiKey: string, baseUrl: string, messages: ChatMessage[], model: string): Promise<AIResponse> {
+    // Check if this is a vision model (Groq supports vision on these models)
+    const visionModels = [
+      'llama-4-scout', 
+      'llama-4-maverick', 
+      'meta-llama/llama-4-scout', 
+      'meta-llama/llama-4-maverick',
+      'llama-4-scout-17b-16e-instruct',
+      'llama-4-maverick-17b-128e-instruct'
+    ];
+    const isVisionModel = visionModels.some(vm => model.includes(vm));
+    
+    // Format messages for vision models (Groq uses OpenAI-compatible format)
+    const formattedMessages = messages.map(msg => {
+      // If content is an array (vision format), convert to Groq format
+      if (Array.isArray(msg.content)) {
+        const groqContent = msg.content.map((c: any) => {
+          // Handle OpenAI-style image_url format
+          if (c.type === 'image_url' && c.image_url) {
+            return {
+              type: 'image_url',
+              image_url: {
+                url: c.image_url.url
+              }
+            };
+          }
+          // Handle our custom image format
+          if ((c as any).image) {
+            return {
+              type: 'image_url',
+              image_url: {
+                url: (c as any).image
+              }
+            };
+          }
+          // Handle text
+          if (c.text || c.type === 'text') {
+            return {
+              type: 'text',
+              text: c.text || String(c)
+            };
+          }
+          return c;
+        });
+        return {
+          role: msg.role,
+          content: groqContent
+        };
+      }
+      // Otherwise, use string content
+      return {
+        role: msg.role,
+        content: msg.content
+      };
+    });
+    
+    const requestBody = {
+      model,
+      messages: formattedMessages,
+      temperature: 0.7,
+      max_tokens: isVisionModel ? 8192 : 4096, // Increased for vision models to allow complete responses
+    };
+    
+    console.log(`📤 Groq API Request:`, {
+      model: model,
+      isVisionModel: isVisionModel,
+      messageCount: formattedMessages.length,
+      hasImages: formattedMessages.some(m => Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image_url' || (c as any).image))
+    });
+    
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.7,
-        max_tokens: 2048,
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -214,6 +360,20 @@ class MultiProviderAI {
       try {
         const errorData = await response.json();
         const errorText = JSON.stringify(errorData);
+        
+        // Log detailed error for debugging
+        console.error(`❌ Groq API Error Details:`, {
+          status: response.status,
+          statusText: response.statusText,
+          model: model,
+          error: errorData,
+          isVisionModel: isVisionModel
+        });
+        
+        // Check if model doesn't exist
+        if (errorText.includes('model') && (errorText.includes('not found') || errorText.includes('invalid') || errorText.includes('does not exist'))) {
+          errorMessage = `Model "${model}" is not available on Groq. The model may not exist or may not support vision. Please try a different model like "gemini-2.0-flash" or "gpt-4o".`;
+        }
         
         // Check for rate limit (429) or TPM/quota errors
         if (response.status === 429 || errorText.toLowerCase().includes('rate limit') || 
@@ -321,6 +481,20 @@ class MultiProviderAI {
   }
 
   private async callOpenAI(apiKey: string, baseUrl: string, messages: ChatMessage[], model: string): Promise<AIResponse> {
+    // Format messages for vision models (OpenAI supports vision)
+    const formattedMessages = messages.map(msg => {
+      if (Array.isArray(msg.content)) {
+        return {
+          role: msg.role,
+          content: msg.content
+        };
+      }
+      return {
+        role: msg.role,
+        content: msg.content
+      };
+    });
+    
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -329,7 +503,7 @@ class MultiProviderAI {
       },
       body: JSON.stringify({
         model,
-        messages,
+        messages: formattedMessages,
         temperature: 0.7,
         max_tokens: 2048,
       })
@@ -348,6 +522,37 @@ class MultiProviderAI {
   }
 
   private async callAnthropic(apiKey: string, baseUrl: string, messages: ChatMessage[], model: string): Promise<AIResponse> {
+    // Format messages for Anthropic (supports vision)
+    const formattedMessages = messages
+      .filter(m => m.role !== 'system') // Anthropic handles system messages differently
+      .map(msg => {
+        if (Array.isArray(msg.content)) {
+          // Convert OpenAI vision format to Anthropic format
+          const content = msg.content.map((c: any) => {
+            if (c.type === 'text') {
+              return { type: 'text', text: c.text || '' };
+            } else if (c.type === 'image_url' && c.image_url) {
+              return {
+                type: 'image',
+                source: {
+                  type: 'url',
+                  url: c.image_url.url
+                }
+              };
+            }
+            return { type: 'text', text: String(c) };
+          });
+          return {
+            role: msg.role,
+            content
+          };
+        }
+        return {
+          role: msg.role,
+          content: [{ type: 'text', text: String(msg.content) }]
+        };
+      });
+    
     const response = await fetch(`${baseUrl}/messages`, {
       method: 'POST',
       headers: {
@@ -357,7 +562,7 @@ class MultiProviderAI {
       },
       body: JSON.stringify({
         model,
-        messages,
+        messages: formattedMessages,
         max_tokens: 2048,
         temperature: 0.7
       })
@@ -380,17 +585,38 @@ class MultiProviderAI {
     if (selectedModel && selectedModel !== 'auto') {
       const modelProvider = this.getProviderForModel(selectedModel);
       if (modelProvider) {
+        // Check if provider is enabled
+        if (!modelProvider.enabled) {
+          console.error(`❌ Provider ${modelProvider.name} is not enabled (missing API key?)`);
+          throw new Error(`Provider ${modelProvider.name} is not enabled. Please check your API key configuration.`);
+        }
+        
         try {
           console.log(`🎯 Using selected model: ${selectedModel} (${modelProvider.name})`);
+          console.log(`📝 Model details:`, { 
+            name: modelProvider.name, 
+            model: modelProvider.model, 
+            hasApiKey: !!modelProvider.apiKey,
+            enabled: modelProvider.enabled
+          });
           return await this.callProvider(modelProvider, messages);
         } catch (error: any) {
-          console.error(`Selected model ${selectedModel} failed, falling back to auto:`, error.message);
+          console.error(`❌ Selected model ${selectedModel} failed:`, error.message);
+          console.error(`📋 Error details:`, {
+            model: selectedModel,
+            provider: modelProvider.name,
+            errorMessage: error.message,
+            stack: error.stack
+          });
           // If it's a rate limit error, re-throw it
           if (error.rateLimitInfo) {
             throw error;
           }
-          // Fall through to auto selection
+          // Re-throw the error so it can be handled by the caller
+          throw error;
         }
+      } else {
+        console.warn(`⚠️ Model ${selectedModel} not found in model map, falling back to auto`);
       }
     }
     
@@ -472,8 +698,15 @@ class MultiProviderAI {
       'gpt-oss-20b': { provider: 'groq', model: 'openai/gpt-oss-20b' },
       'gpt-oss-120b': { provider: 'groq', model: 'openai/gpt-oss-120b' },
       'llama-guard-4-12b': { provider: 'groq', model: 'meta-llama/llama-guard-4-12b' },
+      'llama-4-scout': { provider: 'groq', model: 'meta-llama/llama-4-scout-17b-16e-instruct' },
+      'llama-4-maverick': { provider: 'groq', model: 'meta-llama/llama-4-maverick' },
+      // Note: llama-3.2-90b-vision-preview has been decommissioned
+      // Groq doesn't currently have vision models, so we'll fall back to Gemini
+      'llama-3.2-90b-vision': { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
       'gpt-oss-safeguard-20b': { provider: 'groq', model: 'openai/gpt-oss-safeguard-20b' }, // Legacy ID support
-      'gemini-1.5-flash': { provider: 'gemini', model: 'gemini-1.5-flash' },
+      'gemini-1.5-flash': { provider: 'gemini', model: 'gemini-2.0-flash-exp' }, // Legacy ID - maps to 2.0
+      'gemini-2.0-flash': { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
+      'gemini-2.5-flash': { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
       'gpt-4o-mini': { provider: 'openai', model: 'gpt-4o-mini' },
       'gpt-4o': { provider: 'openai', model: 'gpt-4o' },
       'claude-3-5-sonnet': { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' },

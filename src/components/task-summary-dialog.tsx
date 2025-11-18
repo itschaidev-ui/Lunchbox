@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,11 +21,18 @@ import {
   ZoomIn,
   ZoomOut,
   Bot,
-  Download
+  Download,
+  History,
+  Plus,
+  Edit,
+  Trash2,
+  X
 } from 'lucide-react';
 import type { Task } from '@/lib/types';
-import { format, isToday, isTomorrow, isPast, isThisWeek, isThisMonth } from 'date-fns';
+import { format, isToday, isTomorrow, isPast, isThisWeek, isThisMonth, formatDistanceToNow } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
+import { getUserTaskActivityLog, type TaskActivity } from '@/lib/firebase-task-activity';
+import { useAuth } from '@/context/auth-context';
 
 interface TaskSummaryDialogProps {
   tasks: Task[];
@@ -36,6 +43,23 @@ export function TaskSummaryDialog({ tasks, onAskAI }: TaskSummaryDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [activityLog, setActivityLog] = useState<TaskActivity[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const { user } = useAuth();
+
+  // Load activity log when dialog opens
+  useEffect(() => {
+    if (isOpen && user) {
+      setLoadingActivity(true);
+      getUserTaskActivityLog(user.uid, 100)
+        .then(setActivityLog)
+        .catch(err => {
+          console.error('Failed to load activity log:', err);
+          setActivityLog([]);
+        })
+        .finally(() => setLoadingActivity(false));
+    }
+  }, [isOpen, user]);
 
   // Copy to clipboard function
   const copyToClipboard = async (text: string, taskId: string, label: string) => {
@@ -506,6 +530,77 @@ export function TaskSummaryDialog({ tasks, onAskAI }: TaskSummaryDialogProps) {
                 icon={CheckCircle2}
                 emptyMessage="No completed tasks yet"
               />
+            </div>
+
+            {/* Activity Log */}
+            <div className="space-y-3 border-t border-gray-700 pt-6">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <History className="h-4 w-4 text-blue-400" />
+                Activity Log
+              </h3>
+              {loadingActivity ? (
+                <p className="text-xs text-gray-500 pl-6">Loading activity...</p>
+              ) : activityLog.length === 0 ? (
+                <p className="text-xs text-gray-500 pl-6">No activity yet</p>
+              ) : (
+                <div className="space-y-1.5 pl-6">
+                  {activityLog.slice(0, 50).map((activity, idx) => {
+                    const task = tasks.find(t => t.id === activity.taskId);
+                    const taskName = task?.text || 'Unknown task';
+                    const timeAgo = formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true });
+                    
+                    const getActivityIcon = () => {
+                      switch (activity.activityType) {
+                        case 'created': return <Plus className="h-3 w-3 text-green-400" />;
+                        case 'completed': return <CheckCircle2 className="h-3 w-3 text-green-400" />;
+                        case 'uncompleted': return <Circle className="h-3 w-3 text-gray-400" />;
+                        case 'edited': return <Edit className="h-3 w-3 text-blue-400" />;
+                        case 'deleted': return <Trash2 className="h-3 w-3 text-red-400" />;
+                        case 'starred': return <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />;
+                        case 'unstarred': return <Star className="h-3 w-3 text-gray-400" />;
+                        default: return <Circle className="h-3 w-3 text-gray-400" />;
+                      }
+                    };
+
+                    const getActivityText = () => {
+                      switch (activity.activityType) {
+                        case 'created': return 'Created';
+                        case 'completed': return 'Completed';
+                        case 'uncompleted': return 'Uncompleted';
+                        case 'edited': return 'Edited';
+                        case 'deleted': return 'Deleted';
+                        case 'starred': return 'Starred';
+                        case 'unstarred': return 'Unstarred';
+                        case 'repeating_scheduled': return 'Scheduled repeating';
+                        case 'repeating_updated': return 'Updated repeating';
+                        default: return activity.activityType;
+                      }
+                    };
+
+                    return (
+                      <div 
+                        key={activity.id || idx} 
+                        className="flex items-start gap-2 py-1.5 px-2 rounded text-xs text-gray-300 hover:bg-gray-800/30 transition-colors"
+                      >
+                        <div className="shrink-0 mt-0.5">
+                          {getActivityIcon()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-gray-400">{getActivityText()}</span>
+                          <span className="text-gray-500 mx-1">•</span>
+                          <span className="text-gray-300 truncate" title={taskName}>
+                            {taskName}
+                          </span>
+                          {activity.details?.description && (
+                            <span className="text-gray-500 ml-1">• {activity.details.description}</span>
+                          )}
+                        </div>
+                        <span className="text-gray-500 shrink-0 text-[10px]">{timeAgo}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -225,13 +225,13 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
       <form onSubmit={handleSubmit}>
         {/* Attached Images - On top of text field (ChatGPT style) */}
         {selectedImages.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
+          <div className="mb-2 sm:mb-3 flex flex-wrap gap-1.5 sm:gap-2">
             {selectedImages.map((img) => (
               <div key={img.id} className="relative group">
                 <img 
                   src={img.url} 
                   alt={img.name}
-                  className="w-14 h-14 rounded-lg object-cover border border-gray-600 cursor-pointer transition-transform duration-200 hover:scale-110"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg object-cover border border-gray-600 cursor-pointer transition-transform duration-200 hover:scale-110"
                   onClick={(e) => {
                     // Create modal overlay for full-size view
                     const modal = document.createElement('div');
@@ -317,26 +317,26 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
               <button
                 type="button"
                 onClick={handleImageSelect}
-                className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-600 hover:border-gray-500 flex items-center justify-center text-gray-400 hover:text-gray-300 transition-colors"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg border-2 border-dashed border-gray-600 hover:border-gray-500 flex items-center justify-center text-gray-400 hover:text-gray-300 transition-colors"
                 title="Add more images"
               >
-                <ImageIcon className="h-5 w-5" />
+                <ImageIcon className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
             )}
           </div>
         )}
 
         {/* ChatGPT-style input container */}
-        <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 shadow-lg transition-all duration-200 hover:border-gray-600 focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+        <div className="bg-gray-800 border border-gray-700 rounded-2xl p-3 sm:p-4 shadow-lg transition-all duration-200 hover:border-gray-600 focus-within:border-gray-500 focus-within:ring-2 focus-within:ring-blue-500/20">
           {/* Tab switcher */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => onTabChange?.(tab.id as any)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
+                  "flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200",
                   activeTab === tab.id
                     ? "bg-gray-700 text-white"
                     : "text-gray-400 hover:text-gray-300 hover:bg-gray-700/50"
@@ -361,7 +361,7 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
           </div>
 
           {/* Input area */}
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1.5 sm:gap-2">
             {/* Attachment dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -369,9 +369,9 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                  className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
                 >
-                  <Paperclip className="h-4 w-4" />
+                  <Paperclip className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56 bg-gray-800 border-gray-700">
@@ -435,7 +435,7 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
             {/* Text input */}
             <Textarea
               placeholder={selectedImages.length > 0 ? "Ask anything" : "Ask AI a question or make a request..."}
-              className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none resize-none min-h-[60px] text-white placeholder:text-gray-400 text-base"
+              className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none resize-none min-h-[50px] sm:min-h-[60px] text-white placeholder:text-gray-400 text-sm sm:text-base"
               value={prompt}
               onChange={handlePromptChange}
               disabled={isLoading}
@@ -454,26 +454,26 @@ export function PromptForm({ onSubmit, isLoading, showExamples = true, activeTab
               size="sm"
               onClick={startVoiceRecognition}
               className={cn(
-                "p-2 transition-colors",
+                "p-1.5 sm:p-2 transition-colors",
                 isListening 
                   ? "text-red-400 hover:text-red-300 hover:bg-red-700/50" 
                   : "text-gray-400 hover:text-gray-300 hover:bg-gray-700/50"
               )}
             >
-              <Mic className="h-4 w-4" />
+              <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </Button>
 
             {/* Submit button */}
             <Button
               type="submit"
               size="sm"
-              className="rounded-full bg-white text-gray-800 hover:bg-gray-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed p-2"
+              className="rounded-full bg-white text-gray-800 hover:bg-gray-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed p-1.5 sm:p-2"
               disabled={isLoading || (!prompt.trim() && selectedImages.length === 0)}
             >
               {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
               ) : (
-                <ArrowUp className="h-4 w-4" />
+                <ArrowUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               )}
             </Button>
           </div>
