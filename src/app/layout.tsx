@@ -18,6 +18,7 @@ import Script from 'next/script';
 import SchedulerInit from '@/components/scheduler-init';
 import { OnlineStatusTracker } from '@/components/online-status-tracker';
 import { PWARegister } from '@/components/pwa-register';
+import { CommandPaletteProvider } from '@/components/command-palette-provider';
 
 export const metadata: Metadata = {
   title: 'Lunchbox AI',
@@ -94,16 +95,18 @@ export default function RootLayout({
                       <CreditsProvider>
                         <NavbarProvider>
                           <ClarityProvider>
-                            <TopNavbar />
-                            <main className="flex-1 pb-20 sm:pb-0">
-                              {children}
-                            </main>
-                            <BottomNavbar />
-                            <TimerWidget />
-                            <Toaster />
-                            <SchedulerInit />
-                            <OnlineStatusTracker />
-                            <PWARegister />
+                            <CommandPaletteProvider>
+                              <TopNavbar />
+                              <main className="flex-1 pb-20 sm:pb-0">
+                                {children}
+                              </main>
+                              <BottomNavbar />
+                              <TimerWidget />
+                              <Toaster />
+                              <SchedulerInit />
+                              <OnlineStatusTracker />
+                              <PWARegister />
+                            </CommandPaletteProvider>
                           </ClarityProvider>
                         </NavbarProvider>
                       </CreditsProvider>

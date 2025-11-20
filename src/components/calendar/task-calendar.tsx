@@ -8,12 +8,15 @@ import { Button } from '../ui/button';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isTaskCompletedForDate } from '@/lib/firebase-task-daily-completions';
+import { TaskDetailDialog } from '../task-detail-dialog';
+import { TaskItem } from '../task-item';
 
 type ViewMode = 'day' | 'week' | 'month';
 
 interface TaskCalendarProps {
     tasks: Task[];
     toggleTask: (id: string) => void;
+    onDelete?: (id: string) => void;
 }
 
 /**
@@ -56,12 +59,14 @@ function getTasksForDate(tasks: Task[], date: Date): Task[] {
   });
 }
 
-export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
+export function TaskCalendar({ tasks, toggleTask, onDelete }: TaskCalendarProps) {
   const today = startOfToday();
   const [currentDate, setCurrentDate] = useState(today);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [selectedDayForTasks, setSelectedDayForTasks] = useState<Date | null>(null);
   const [dailyCompletions, setDailyCompletions] = useState<Map<string, boolean>>(new Map());
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
   // Check daily completions for repeating tasks
   const refreshDailyCompletions = useCallback(async () => {
@@ -183,58 +188,12 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
               {tasksForDay.map((task: Task) => {
                 const isCompleted = isTaskCompletedForDateLocal(task, currentDate);
                 return (
-                <div
-                  key={task.id}
-                  className={cn(
-                    "p-4 rounded-lg border transition-all cursor-pointer",
-                    isCompleted
-                      ? "bg-gray-800/30 border-gray-700/50"
-                      : "bg-gray-800/50 border-gray-700 hover:bg-gray-800/70"
-                  )}
-                  onClick={() => toggleTask(task.id)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={cn(
-                      "h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5",
-                      isCompleted ? "bg-gray-600 border-gray-600" : "border-gray-600"
-                    )}>
-                      {isCompleted && (
-                        <svg className="h-3 w-3 text-white" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className={cn(
-                        "font-medium",
-                        isCompleted ? "line-through text-gray-400" : "text-white"
-                      )}>
-                        {task.text}
-                      </p>
-                      {task.description && (
-                        <p className="text-sm text-gray-400 mt-1">{task.description}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-1">
-                        {task.availableDays && task.availableDays.length > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-purple-400">
-                            <Repeat className="h-3 w-3" />
-                            <span>Repeating</span>
-                          </div>
-                        )}
-                        {task.dueDate && (
-                          <p className="text-xs text-gray-500">
-                            {format(parseISO(task.dueDate), 'p')}
-                          </p>
-                        )}
-                        {task.availableDaysTime && (
-                          <p className="text-xs text-gray-500">
-                            {task.availableDaysTime}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    onToggle={toggleTask}
+                    onDelete={onDelete || (() => {})}
+                  />
                 );
               })}
             </div>
@@ -265,9 +224,16 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
             <div
               key={idx}
               className={cn(
-                "border-r border-b border-gray-700/50 p-3 flex flex-col min-h-[500px]",
+                "border-r border-b border-gray-700/50 p-3 flex flex-col min-h-[500px] cursor-pointer",
                 isDayToday && "bg-blue-500/5"
               )}
+              onClick={(e) => {
+                // Only open day view if clicking on empty space (not on a task)
+                if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.calendar-day-content')) {
+                  setViewMode('day');
+                  setCurrentDate(day);
+                }
+              }}
             >
                 <div className="mb-2 shrink-0">
                   <div className={cn(
@@ -288,7 +254,7 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
                     </div>
                   )}
                 </div>
-                <div className="flex-1 space-y-1 overflow-y-auto">
+                <div className="flex-1 space-y-1 overflow-y-auto calendar-day-content">
                   {tasksForDay.map((task: Task) => {
                     const isCompleted = isTaskCompletedForDateLocal(task, day);
                     return (
@@ -300,7 +266,11 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
                           ? "bg-gray-700/30 text-gray-400 line-through"
                           : "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
                       )}
-                      onClick={() => toggleTask(task.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedTask(task);
+                        setIsTaskDialogOpen(true);
+                      }}
                       title={task.text}
                     >
                       <div className="flex items-center gap-1">
@@ -365,11 +335,18 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
                 <div
                   key={idx}
                   className={cn(
-                    "border-r border-b border-gray-700/50 p-2 transition-colors flex flex-col min-h-[120px]",
+                    "border-r border-b border-gray-700/50 p-2 transition-colors flex flex-col min-h-[120px] cursor-pointer",
                     isDayToday && "bg-blue-500/5",
                     !isCurrentMonth && "bg-gray-900/50 opacity-50",
                     "hover:bg-gray-800/30"
                   )}
+                  onClick={(e) => {
+                    // Only open day view if clicking on empty space (not on a task)
+                    if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.calendar-day-content')) {
+                      setViewMode('day');
+                      setCurrentDate(day);
+                    }
+                  }}
                 >
                   <div className={cn(
                     "text-sm font-medium mb-1 shrink-0",
@@ -379,7 +356,7 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
                   )}>
                     {format(day, 'd')}
                   </div>
-                  <div className="flex-1 space-y-1 overflow-y-auto">
+                  <div className="flex-1 space-y-1 overflow-y-auto calendar-day-content">
                     {tasksForDay.slice(0, 3).map((task: Task) => {
                       const isCompleted = isTaskCompletedForDateLocal(task, day);
                       return (
@@ -391,7 +368,11 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
                             ? "bg-gray-700/30 text-gray-400 line-through"
                             : "bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
                         )}
-                        onClick={() => toggleTask(task.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTask(task);
+                          setIsTaskDialogOpen(true);
+                        }}
                         title={task.text}
                       >
                         <div className="flex items-center gap-1">
@@ -735,6 +716,19 @@ export function TaskCalendar({ tasks, toggleTask }: TaskCalendarProps) {
       {viewMode === 'day' && renderDayView()}
       {viewMode === 'week' && renderWeekView()}
       {viewMode === 'month' && renderMonthView()}
+
+      {/* Task Detail Dialog */}
+      {selectedTask && (
+        <TaskDetailDialog
+          task={selectedTask}
+          isOpen={isTaskDialogOpen}
+          onOpenChange={setIsTaskDialogOpen}
+          onToggle={toggleTask}
+          onEdit={() => {}}
+          onDelete={onDelete || (() => {})}
+          isCompleted={selectedTask ? isTaskCompletedForDateLocal(selectedTask, currentDate) : false}
+        />
+      )}
     </div>
   );
 }

@@ -28,10 +28,24 @@ import { useAuth } from '@/context/auth-context';
 import { DEFAULT_COLUMNS } from './kanban/column-manager';
 import { getTagStyles } from '@/lib/tag-colors';
 import { isTaskCompletedForDate } from '@/lib/firebase-task-daily-completions';
+import { useSwipeGesture } from '@/hooks/use-swipe-gesture';
 
-// A simple markdown to HTML converter
+// A simple markdown to HTML converter with URL detection
 const Markdown = ({ text }: { text: string }) => {
-    const html = text
+    // First, detect and convert URLs (including @https:// format)
+    // Pattern matches: @https://..., https://..., http://..., or just URLs without protocol
+    const urlPattern = /(@)?(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}[^\s]*)/gi;
+    
+    let html = text.replace(urlPattern, (match, atSymbol, url) => {
+      // Remove @ symbol if present
+      const cleanUrl = atSymbol ? url : match;
+      // Add protocol if missing
+      const fullUrl = cleanUrl.startsWith('http') ? cleanUrl : `https://${cleanUrl}`;
+      return `<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">${match}</a>`;
+    });
+    
+    // Then apply markdown formatting
+    html = html
       .replace(/^### (.*$)/gim, '<h3>$1</h3>')
       .replace(/^## (.*$)/gim, '<h2>$1</h2>')
       .replace(/^# (.*$)/gim, '<h1>$1</h1>')
@@ -309,11 +323,26 @@ export function TaskItem({ task, onToggle, onDelete, bulkSelectMode = false, isS
     return format(date, 'MMM d, yyyy, p');
   })() : null;
   
+  // Swipe gestures for mobile
+  const swipeRef = useSwipeGesture({
+    onSwipeLeft: () => {
+      if (!isLocked && !bulkSelectMode) {
+        onDelete(task.id);
+      }
+    },
+    onSwipeRight: () => {
+      if (!isLocked && !bulkSelectMode) {
+        handleToggleProgress();
+      }
+    },
+    threshold: 50,
+  });
 
   return (
     <>
     <Collapsible>
       <div
+        ref={swipeRef as any}
         className={cn(
               'mobile-list-item flex items-start gap-3 p-4 rounded-lg border transition-colors',
               taskCompleted ? 'bg-gray-800/30 border-gray-700/50' : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/70 hover:border-gray-600',

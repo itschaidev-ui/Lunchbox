@@ -28,6 +28,12 @@ import type { Message } from '@/ai/flows/chat';
 import { FloatingMenu } from '@/components/layout/floating-menu';
 import { CreditsDisplay } from '@/components/credits/credits-display';
 import { CreditsDialog } from '@/components/credits/credits-dialog';
+import { useKeyboardShortcuts, COMMON_SHORTCUTS } from '@/hooks/use-keyboard-shortcuts';
+import { EmptyState } from '@/components/empty-state';
+import { SkeletonTaskList } from '@/components/skeleton-task-list';
+import { QuickActionsMenu } from '@/components/quick-actions-menu';
+import { AnalyticsDashboard } from '@/components/analytics-dashboard';
+import { Search as SearchIcon, BarChart3 } from 'lucide-react';
 // Removed old notification system import
 
 function TasksPageContent() {
@@ -46,9 +52,46 @@ function TasksPageContent() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showCreditsDialog, setShowCreditsDialog] = useState(false);
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   
   // Get search params - must be called unconditionally (hooks rule)
   const searchParams = useSearchParams();
+  
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+  
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    {
+      ...COMMON_SHORTCUTS.NEW_TASK,
+      action: () => setIsFormOpen(true),
+    },
+    {
+      ...COMMON_SHORTCUTS.SEARCH,
+      action: () => {
+        // Focus search input if it exists
+        const searchInput = document.querySelector('input[type="search"], input[placeholder*="Search"]') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+        }
+      },
+    },
+    {
+      key: 'Escape',
+      action: () => {
+        setIsFormOpen(false);
+        setIsAssistantOpen(false);
+        setIsFeedbackOpen(false);
+        setBulkSelectMode(false);
+      },
+    },
+  ]);
   
   // Track tasks being toggled to prevent rapid toggles
   const togglingTasksRef = useRef<Set<string>>(new Set());
@@ -320,13 +363,22 @@ function TasksPageContent() {
         if (filter === 'overdue') return task.dueDate && new Date(task.dueDate) < new Date() && !task.completed;
         return true;
       })
-      .filter(task => task.text.toLowerCase().includes(searchTerm.toLowerCase()))
+      .filter(task => {
+        // Use debounced search term for better performance
+        if (!debouncedSearchTerm.trim()) return true;
+        const searchLower = debouncedSearchTerm.toLowerCase();
+        return (
+          task.text.toLowerCase().includes(searchLower) ||
+          task.description?.toLowerCase().includes(searchLower) ||
+          task.tags?.some(tag => tag.toLowerCase().includes(searchLower))
+        );
+      })
       .filter(task => {
         // Tag filtering
         if (selectedTags.length === 0) return true;
         return selectedTags.some(tag => task.tags?.includes(tag));
       }),
-    [tasks, filter, searchTerm, selectedTags]
+    [tasks, filter, debouncedSearchTerm, selectedTags]
   );
 
   const sortedTasks = useMemo(() => 
@@ -580,18 +632,14 @@ function TasksPageContent() {
             </div>
             {loading ? (
                 <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-6 sm:p-8">
-                    <div className="text-center py-8 sm:py-12 border-2 border-dashed border-gray-700/50 rounded-lg">
-                        <div className="flex items-center justify-center space-x-2">
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
-                            <p className="text-sm text-muted-foreground">Loading tasks...</p>
-                        </div>
-                    </div>
+                    <SkeletonTaskList count={8} />
                 </div>
             ) : sortedTasks.length > 0 ? (
                 <div className="flex flex-col gap-3">
                     <div className="bg-gray-800/30 border border-gray-700/50 rounded-t-xl p-3 sm:p-4 flex items-center justify-between shrink-0">
                         <h2 className="text-sm sm:text-base font-semibold text-foreground">All Tasks</h2>
                         <div className="flex items-center gap-2">
+                            <QuickActionsMenu />
                             {!bulkSelectMode ? (
                                 <>
                                     <div className="text-xs text-muted-foreground">
@@ -671,11 +719,34 @@ function TasksPageContent() {
                 </div>
             ) : (
                 <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-6 sm:p-8">
-                    <div className="text-center py-8 sm:py-12 border-2 border-dashed border-gray-700/50 rounded-lg">
-                        <CheckSquare className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 text-muted-foreground" />
-                        <p className="text-sm sm:text-base text-muted-foreground">No tasks match your criteria</p>
-                        <p className="text-xs text-muted-foreground mt-1">Try adjusting your filters</p>
-                    </div>
+                    <EmptyState
+                      icon={<CheckSquare className="h-12 w-12 text-muted-foreground" />}
+                      title={tasks.length === 0 ? "No tasks yet" : "No tasks match your criteria"}
+                      description={
+                        tasks.length === 0
+                          ? "Get started by creating your first task! Click the button below or use Cmd+N."
+                          : searchTerm || selectedTags.length > 0 || filter !== 'all'
+                          ? "Try adjusting your search or filters to find what you're looking for."
+                          : "No tasks found with the current filters."
+                      }
+                      action={
+                        tasks.length === 0
+                          ? {
+                              label: 'Create Your First Task',
+                              onClick: () => setIsFormOpen(true),
+                            }
+                          : (searchTerm || selectedTags.length > 0 || filter !== 'all')
+                          ? {
+                              label: 'Clear Filters',
+                              onClick: () => {
+                                setSearchTerm('');
+                                setSelectedTags([]);
+                                setFilter('all');
+                              },
+                            }
+                          : undefined
+                      }
+                    />
                 </div>
             )}
           </div>
@@ -732,6 +803,13 @@ function TasksPageContent() {
                   <Calendar className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
                   <span className="hidden sm:inline">Calendar</span>
                 </TabsTrigger>
+                <TabsTrigger 
+                  value="analytics" 
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center whitespace-nowrap rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all outline-none focus:outline-none focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-gray-800 data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                >
+                  <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Analytics</span>
+                </TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <TaskSummaryDialog 
@@ -767,7 +845,10 @@ function TasksPageContent() {
               />
             </TabsContent>
             <TabsContent value="calendar" className="flex-1 flex flex-col items-center justify-center p-2 md:p-4 outline-none focus:outline-none focus-visible:outline-none">
-              <TaskCalendar tasks={tasks} toggleTask={handleToggle} />
+              <TaskCalendar tasks={tasks} toggleTask={handleToggle} onDelete={deleteTask} />
+            </TabsContent>
+            <TabsContent value="analytics" className="flex-1 flex flex-col outline-none focus:outline-none focus-visible:outline-none">
+              <AnalyticsDashboard tasks={tasks} />
             </TabsContent>
           </Tabs>
         </div>

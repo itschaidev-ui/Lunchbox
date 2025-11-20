@@ -237,19 +237,30 @@ class MultiProviderAI {
       hasImages: contents.some(c => c.parts.some((p: any) => p.inlineData))
     });
     
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 8192, // Increased for vision tasks to allow complete responses
-        }
-      })
-    });
+    let response;
+    try {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: contents,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 8192, // Increased for vision tasks to allow complete responses
+          }
+        })
+      });
+    } catch (fetchError: any) {
+      console.error('❌ Gemini Fetch Error:', {
+        message: fetchError.message,
+        cause: fetchError.cause,
+        name: fetchError.name,
+        stack: fetchError.stack
+      });
+      throw new Error(`Network error connecting to Gemini API: ${fetchError.message}. Check your internet connection and firewall settings.`);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -278,12 +289,12 @@ class MultiProviderAI {
     const visionModels = [
       'llama-4-scout', 
       'llama-4-maverick', 
-      'meta-llama/llama-4-scout', 
-      'meta-llama/llama-4-maverick',
       'llama-4-scout-17b-16e-instruct',
-      'llama-4-maverick-17b-128e-instruct'
+      'llama-4-maverick-17b-128e-instruct',
+      'meta-llama/llama-4-scout-17b-16e-instruct',
+      'meta-llama/llama-4-maverick-17b-128e-instruct'
     ];
-    const isVisionModel = visionModels.some(vm => model.includes(vm));
+    const isVisionModel = visionModels.some(vm => model.includes(vm) || model.toLowerCase().includes(vm.toLowerCase()));
     
     // Format messages for vision models (Groq uses OpenAI-compatible format)
     const formattedMessages = messages.map(msg => {
@@ -343,14 +354,25 @@ class MultiProviderAI {
       hasImages: formattedMessages.some(m => Array.isArray(m.content) && m.content.some((c: any) => c.type === 'image_url' || (c as any).image))
     });
     
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    });
+    let response;
+    try {
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+    } catch (fetchError: any) {
+      console.error('❌ Groq Fetch Error:', {
+        message: fetchError.message,
+        cause: fetchError.cause,
+        name: fetchError.name,
+        stack: fetchError.stack
+      });
+      throw new Error(`Network error connecting to Groq API: ${fetchError.message}. Check your internet connection and firewall settings.`);
+    }
 
     if (!response.ok) {
       let errorMessage = `Groq API error: ${response.status} ${response.statusText}`;
@@ -367,8 +389,16 @@ class MultiProviderAI {
           statusText: response.statusText,
           model: model,
           error: errorData,
-          isVisionModel: isVisionModel
+          isVisionModel: isVisionModel,
+          requestBody: JSON.stringify(requestBody, null, 2).substring(0, 500)
         });
+        
+        // Include the actual error message from Groq
+        if (errorData.error?.message) {
+          errorMessage = `Groq API error: ${errorData.error.message}`;
+        } else if (errorData.message) {
+          errorMessage = `Groq API error: ${errorData.message}`;
+        }
         
         // Check if model doesn't exist
         if (errorText.includes('model') && (errorText.includes('not found') || errorText.includes('invalid') || errorText.includes('does not exist'))) {
@@ -699,9 +729,8 @@ class MultiProviderAI {
       'gpt-oss-120b': { provider: 'groq', model: 'openai/gpt-oss-120b' },
       'llama-guard-4-12b': { provider: 'groq', model: 'meta-llama/llama-guard-4-12b' },
       'llama-4-scout': { provider: 'groq', model: 'meta-llama/llama-4-scout-17b-16e-instruct' },
-      'llama-4-maverick': { provider: 'groq', model: 'meta-llama/llama-4-maverick' },
+      'llama-4-maverick': { provider: 'groq', model: 'meta-llama/llama-4-maverick-17b-128e-instruct' },
       // Note: llama-3.2-90b-vision-preview has been decommissioned
-      // Groq doesn't currently have vision models, so we'll fall back to Gemini
       'llama-3.2-90b-vision': { provider: 'gemini', model: 'gemini-2.0-flash-exp' },
       'gpt-oss-safeguard-20b': { provider: 'groq', model: 'openai/gpt-oss-safeguard-20b' }, // Legacy ID support
       'gemini-1.5-flash': { provider: 'gemini', model: 'gemini-2.0-flash-exp' }, // Legacy ID - maps to 2.0
